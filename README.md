@@ -1,73 +1,96 @@
-# Welcome to your Lovable project
+# M1 PAE Hub — Front-end
 
-## Project info
+**Stack:** Vite + React 18 + TypeScript + shadcn/ui + Tailwind CSS
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+Interface web do M1 PAE Hub — plataforma de gestão de Plano de Ação de Emergência (PAE) para terminais portuários. Concentra o COP (Centro de Operações), ocorrências/emergências, salas de crise (War Room / Situation Room), orquestração de acionamentos, dashboards, segurança operacional, treinamentos, documentos e gestão de acesso.
 
-## How can I edit this code?
+> Atualmente a interface roda com **dados mock** (`src/lib/data.ts`). A integração
+> com o back-end (`pae-api` / M1 PAE Hub API) está prevista e será feita por uma
+> camada de serviços consumindo `http://localhost:3001/api/v1`.
 
-There are several ways of editing your application.
+---
 
-**Use Lovable**
+## Pré-requisitos
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+| Ferramenta | Versão mínima |
+|---|---|
+| Node.js | 20.x LTS |
+| npm | 10.x |
 
-Changes made via Lovable will be committed automatically to this repo.
+---
 
-**Use your preferred IDE**
+## Instalação Rápida
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+```bash
+# 1. Instalar dependências
+npm install
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# 2. Iniciar em desenvolvimento (Vite)
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+A aplicação sobe em `http://localhost:8080`.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+---
 
-**Use GitHub Codespaces**
+## Scripts
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```bash
+npm run dev          # Desenvolvimento com HMR
+npm run build        # Build de produção
+npm run build:dev    # Build em modo development
+npm run preview      # Servir o build localmente
+npm run lint         # ESLint
+npm run test         # Testes unitários (Vitest)
+npm run test:watch   # Vitest em watch
+```
 
-## What technologies are used for this project?
+---
 
-This project is built with:
+## Estrutura do Projeto
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+```
+src/
+  main.tsx                 ← Bootstrap React
+  App.tsx                  ← Providers (React Query, Router, Tooltip, Toaster)
+  index.css                ← Tailwind + tema
+  pages/
+    Index.tsx              ← Entrada da aplicação (monta o PAESystem)
+    NotFound.tsx
+  components/
+    pae/                   ← Módulos de domínio da plataforma
+      PAESystem.tsx        ← Shell principal / roteamento de views
+      AppSidebar.tsx       ← Navegação lateral
+      DashboardView.tsx    ← KPIs e visão geral
+      COPView.tsx          ← Centro de Operações
+      OccurrencesView.tsx  ← Ocorrências / emergências
+      OrchestrationView.tsx← Orquestração de acionamentos
+      SituationRoomView.tsx← Sala de crise
+      AICommandView.tsx    ← AI Command
+      ...                  ← Segurança, EPIs, Treinamentos, Documentos, Usuários, etc.
+    ui/                    ← Componentes base (shadcn/ui)
+  lib/
+    data.ts                ← Dados mock atuais
+    types.ts               ← Tipos de domínio
+    auth-context.tsx       ← Contexto de autenticação
+    access-control.ts      ← RBAC no cliente
+    utils.ts
+  hooks/                   ← Hooks reutilizáveis
+  assets/                  ← Imagens e estáticos
+  test/                    ← Setup e testes (Vitest)
+public/                    ← favicon, robots.txt, estáticos públicos
+```
 
-## How can I deploy this project?
+---
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+## Integração com a API (planejada)
 
-## Can I connect a custom domain to my Lovable project?
+O back-end do projeto é o **M1 PAE Hub API** (NestJS + Prisma + PostgreSQL),
+disponível em `http://localhost:3001/api/v1`. A integração substituirá os dados
+mock de `src/lib/data.ts` por uma camada de serviços HTTP autenticada via JWT.
 
-Yes, you can!
+Quando ativada, a URL da API será configurada por variável de ambiente (`.env`):
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+```env
+VITE_API_URL=http://localhost:3001
+```
