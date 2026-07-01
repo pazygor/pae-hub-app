@@ -1,0 +1,128 @@
+import { AppData } from './types';
+
+export const INITIAL_DATA: AppData = {
+  terminals: [
+    { id: 't1', name: 'Terminal Norte (TECON)', responsible: 'Carlos Silva', contact: '(13) 9982-1122', location: 'Cais 1 - Berço 101', lat: -23.9618, lng: -46.3322, status: 'Ativo' },
+    { id: 't2', name: 'Terminal Químico Sul', responsible: 'Ana Paula Mendes', contact: '(13) 9971-3344', location: 'Cais 4 - Berço 402', lat: -23.9720, lng: -46.3280, status: 'Revisão' },
+    { id: 't3', name: 'Terminal de Granéis Líquidos', responsible: 'Roberto Almeida', contact: '(13) 9965-5566', location: 'Cais 7 - Berço 701', lat: -23.9550, lng: -46.3400, status: 'Ativo' },
+  ],
+  entities: [
+    { id: 'e1', name: 'Corpo de Bombeiros', type: 'Emergência', contact: '193', status: 'Ativo' },
+    { id: 'e2', name: 'Autoridade Portuária de Santos', type: 'Autoridade Portuária', contact: '(13) 3202-6565', status: 'Ativo' },
+    { id: 'e3', name: 'Defesa Civil', type: 'Emergência', contact: '199', status: 'Ativo' },
+    { id: 'e4', name: 'Órgão Ambiental (IBAMA)', type: 'Ambiental', contact: '0800-618-080', status: 'Ativo' },
+  ],
+  users: [
+    { id: 'u1', name: 'Administrador Geral', email: 'admin@paehub.com', password: 'admin123', role: 'admin', linkId: null },
+    { id: 'u2', name: 'Carlos Silva', email: 'carlos@tecon.com', password: 'terminal123', role: 'terminal', linkId: 't1', accessLevel: 'tático' },
+    { id: 'u3', name: 'Oficial Bombeiro', email: 'bombeiro@gov.br', password: 'entity123', role: 'entity', linkId: 'e1', accessLevel: 'tático' },
+    { id: 'u4', name: 'Diretor Portuário', email: 'diretor@tecon.com', password: 'estrategico123', role: 'terminal', linkId: 't1', accessLevel: 'estratégico' },
+    { id: 'u5', name: 'Supervisor João', email: 'joao@tecon.com', password: 'tatico123', role: 'terminal', linkId: 't1', accessLevel: 'tático' },
+    { id: 'u6', name: 'Operador Pedro', email: 'pedro@tecon.com', password: 'operacional123', role: 'terminal', linkId: 't1', accessLevel: 'operacional', tacticalManagerId: 'u5' },
+  ],
+  permissions: [
+    { entityId: 'e1', terminalIds: ['t1', 't2', 't3'] },
+    { entityId: 'e2', terminalIds: ['t1', 't2'] },
+    { entityId: 'e3', terminalIds: ['t1', 't3'] },
+    { entityId: 'e4', terminalIds: ['t2', 't3'] },
+  ],
+  notificationRules: [
+    { id: 'nr1', occurrenceType: 'Princípio de incêndio', entityId: 'e1', mandatory: true },
+    { id: 'nr2', occurrenceType: 'Princípio de incêndio', entityId: 'e3', mandatory: false },
+    { id: 'nr3', occurrenceType: 'Vazamento', entityId: 'e4', mandatory: true },
+    { id: 'nr4', occurrenceType: 'Vazamento', entityId: 'e3', mandatory: false },
+    { id: 'nr5', occurrenceType: 'Emergência', entityId: 'e1', mandatory: true },
+    { id: 'nr6', occurrenceType: 'Emergência', entityId: 'e2', mandatory: true },
+    { id: 'nr7', occurrenceType: 'Emergência', entityId: 'e3', mandatory: true },
+    { id: 'nr8', occurrenceType: 'Emergência', entityId: 'e4', mandatory: false },
+    { id: 'nr9', occurrenceType: 'Explosão', entityId: 'e1', mandatory: true },
+    { id: 'nr10', occurrenceType: 'Explosão', entityId: 'e3', mandatory: true },
+    { id: 'nr11', occurrenceType: 'Contaminação ambiental', entityId: 'e4', mandatory: true },
+  ],
+  entityNotifications: [],
+  risks: [
+    { id: 'r1', terminalId: 't1', type: 'Incêndio', description: 'Risco de incêndio em área de armazenamento de contêineres', level: 'alto', affectedArea: 'Pátio de contêineres', date: '2026-03-01' },
+    { id: 'r2', terminalId: 't2', type: 'Vazamento Químico', description: 'Possibilidade de vazamento em tanques de amônia', level: 'alto', affectedArea: 'Tanques 3 e 4', date: '2026-03-05' },
+    { id: 'r3', terminalId: 't1', type: 'Queda de carga', description: 'Risco de queda durante operação de guindastes', level: 'médio', affectedArea: 'Berço 101', date: '2026-03-10' },
+  ],
+  plans: [
+    { id: 'p1', terminalId: 't1', name: 'PAE Incêndio TECON', description: 'Plano de ação para combate a incêndios no terminal norte', responsible: 'Carlos Silva', checklist: [{ text: 'Acionar alarme', done: true }, { text: 'Evacuar área', done: false }, { text: 'Contatar bombeiros', done: false }], status: 'ativo' },
+    { id: 'p2', terminalId: 't2', name: 'PAE Vazamento Químico', description: 'Procedimentos em caso de vazamento de produtos químicos', responsible: 'Ana Paula Mendes', checklist: [{ text: 'Isolar área', done: true }, { text: 'Ativar sistema de contenção', done: true }, { text: 'Notificar IBAMA', done: false }], status: 'ativo' },
+  ],
+  occurrences: [
+    {
+      id: 'o1', incNumber: 'INC-0001', terminalId: 't1', dateTime: '2026-03-12T08:30:00', type: 'Princípio de incêndio', description: 'Foco de incêndio detectado próximo ao pátio de contêineres', status: 'em atendimento', criticality: 'alta', responsible: 'Carlos Silva', team: 'Brigada de Incêndio',
+      timeline: [
+        { id: 'tl1', dateTime: '2026-03-12T08:30:00', type: 'ocorrência registrada', description: 'Foco de incêndio identificado por sensor de calor no pátio A3', userName: 'Carlos Silva' },
+        { id: 'tl2', dateTime: '2026-03-12T08:35:00', type: 'equipe acionada', description: 'Brigada de incêndio do terminal acionada', userName: 'Carlos Silva' },
+        { id: 'tl3', dateTime: '2026-03-12T08:40:00', type: 'plano de emergência ativado', description: 'PAE Incêndio TECON ativado — evacuação iniciada', userName: 'Administrador Geral' },
+        { id: 'tl4', dateTime: '2026-03-12T08:45:00', type: 'entidade notificada', description: 'Corpo de Bombeiros notificado via 193', userName: 'Carlos Silva' },
+        { id: 'tl5', dateTime: '2026-03-12T09:00:00', type: 'atualização de status', description: 'Status alterado para "em atendimento"', userName: 'Administrador Geral' },
+      ],
+    },
+    {
+      id: 'o2', incNumber: 'INC-0002', terminalId: 't2', dateTime: '2026-03-13T14:15:00', type: 'Vazamento', description: 'Pequeno vazamento detectado no tanque 3', status: 'aberto', criticality: 'crítica', responsible: 'Ana Paula Mendes', team: 'Equipe de Contenção Química',
+      timeline: [
+        { id: 'tl6', dateTime: '2026-03-13T14:15:00', type: 'ocorrência registrada', description: 'Sensor de pressão indicou queda anormal no tanque 3', userName: 'Ana Paula Mendes' },
+      ],
+    },
+  ],
+  documents: [
+    { id: 'd1', title: 'PAE Incêndio - Terminal Norte', docType: 'Plano de Ação de Emergência', description: 'Plano completo de ação para combate a incêndios no TECON', fileName: 'pae-incendio-tecon.pdf', terminalId: 't1', uploadDate: '2026-02-15', userName: 'Carlos Silva' },
+    { id: 'd2', title: 'Rota de Evacuação - Cais 1', docType: 'Rotas de evacuação', description: 'Mapa de evacuação do berço 101 e áreas adjacentes', fileName: 'rota-evacuacao-cais1.pdf', terminalId: 't1', uploadDate: '2026-02-20', userName: 'Carlos Silva' },
+    { id: 'd3', title: 'Contatos de Emergência Atualizados', docType: 'Contatos de emergência', description: 'Lista de contatos de emergência do Terminal Químico Sul', fileName: 'contatos-emergencia-tqs.pdf', terminalId: 't2', uploadDate: '2026-03-01', userName: 'Ana Paula Mendes' },
+    { id: 'd4', title: 'Procedimento de Contenção Química', docType: 'Procedimentos operacionais', description: 'Procedimento padrão para contenção de vazamentos químicos', fileName: 'proc-contencao-quimica.pdf', terminalId: 't2', uploadDate: '2026-03-05', userName: 'Ana Paula Mendes' },
+    { id: 'd5', title: 'Planta Operacional - Granéis', docType: 'Plantas operacionais', description: 'Planta operacional do Terminal de Granéis Líquidos', fileName: 'planta-graneis.dwg', terminalId: 't3', uploadDate: '2026-01-10', userName: 'Roberto Almeida' },
+  ],
+  mapElements: [
+    { id: 'me1', name: 'Extintor CO2 - Pátio A', layerType: 'fire_equipment', lat: -23.9615, lng: -46.3318, description: 'Extintor de CO2 próximo ao pátio de contêineres A3', terminalId: 't1' },
+    { id: 'me2', name: 'Extintor PQS - Berço 101', layerType: 'fire_equipment', lat: -23.9622, lng: -46.3326, description: 'Extintor de pó químico seco no berço 101', terminalId: 't1' },
+    { id: 'me3', name: 'Hidrante H-01', layerType: 'hydrant', lat: -23.9612, lng: -46.3330, description: 'Hidrante de coluna junto ao portão principal', terminalId: 't1' },
+    { id: 'me4', name: 'Hidrante H-02', layerType: 'hydrant', lat: -23.9625, lng: -46.3315, description: 'Hidrante subterrâneo no pátio de cargas', terminalId: 't1' },
+    { id: 'me5', name: 'Rota Evacuação Norte', layerType: 'evacuation_route', lat: -23.9608, lng: -46.3322, description: 'Rota de evacuação pela saída norte do terminal', terminalId: 't1' },
+    { id: 'me6', name: 'Área de Risco - Tanques', layerType: 'risk_area', lat: -23.9718, lng: -46.3275, description: 'Área de armazenamento de produtos químicos', terminalId: 't2' },
+    { id: 'me7', name: 'Área de Risco - Amônia', layerType: 'risk_area', lat: -23.9725, lng: -46.3285, description: 'Perímetro de segurança dos tanques de amônia', terminalId: 't2' },
+    { id: 'me8', name: 'Ponto de Encontro Alpha', layerType: 'meeting_point', lat: -23.9605, lng: -46.3335, description: 'Ponto de encontro principal para evacuação do TECON', terminalId: 't1' },
+    { id: 'me9', name: 'Ponto de Encontro Bravo', layerType: 'meeting_point', lat: -23.9730, lng: -46.3270, description: 'Ponto de encontro do Terminal Químico Sul', terminalId: 't2' },
+    { id: 'me10', name: 'Hidrante H-03', layerType: 'hydrant', lat: -23.9548, lng: -46.3395, description: 'Hidrante no acesso principal do terminal de granéis', terminalId: 't3' },
+    { id: 'me11', name: 'Extintor Espuma - Dique', layerType: 'fire_equipment', lat: -23.9555, lng: -46.3405, description: 'Extintor de espuma mecânica junto ao dique de contenção', terminalId: 't3' },
+    { id: 'me12', name: 'Rota Evacuação Cais 4', layerType: 'evacuation_route', lat: -23.9715, lng: -46.3290, description: 'Rota de evacuação pelo cais 4 do terminal químico', terminalId: 't2' },
+  ],
+  chatMessages: [],
+  trainings: [
+    { id: 'tr1', name: 'Combate a Incêndio', description: 'Treinamento básico de combate a incêndios em área portuária', mandatory: true, materialFileName: 'manual-combate-incendio.pdf', videoUrl: 'https://www.youtube.com/watch?v=example1', terminalId: 't1' },
+    { id: 'tr2', name: 'Primeiros Socorros', description: 'Atendimento de emergência e primeiros socorros', mandatory: true, videoUrl: 'https://www.youtube.com/watch?v=example2', terminalId: 't1' },
+    { id: 'tr3', name: 'Manuseio de Produtos Químicos', description: 'Procedimentos para manuseio seguro de produtos químicos', mandatory: false, materialFileName: 'guia-produtos-quimicos.pptx', terminalId: 't2' },
+    { id: 'tr4', name: 'Evacuação de Emergência', description: 'Procedimentos de evacuação e uso de rotas de fuga', mandatory: true, terminalId: 't1' },
+  ],
+  userTrainings: [
+    { id: 'ut1', trainingId: 'tr1', userId: 'u2', completedDate: '2025-06-15', expiryDate: '2026-06-15' },
+    { id: 'ut2', trainingId: 'tr2', userId: 'u2', completedDate: '2025-01-10', expiryDate: '2027-01-10' },
+    { id: 'ut3', trainingId: 'tr4', userId: 'u2', completedDate: '2025-12-01', expiryDate: '2026-06-01' },
+    { id: 'ut4', trainingId: 'tr1', userId: 'u3', completedDate: '2025-08-20', expiryDate: '2026-08-20' },
+  ],
+  epis: [
+    { id: 'epi1', name: 'Capacete de Segurança', description: 'Capacete com aba frontal para proteção contra impactos', epiType: 'proteção_cabeça', expiryDate: null, terminalId: 't1' },
+    { id: 'epi2', name: 'Luvas Nitrílicas', description: 'Luvas de proteção química em nitrila', epiType: 'proteção_mãos', expiryDate: '2026-09-15', terminalId: 't1' },
+    { id: 'epi3', name: 'Respirador PFF2', description: 'Máscara de proteção respiratória PFF2', epiType: 'proteção_respiratória', expiryDate: '2026-05-01', terminalId: 't2' },
+    { id: 'epi4', name: 'Óculos de Proteção', description: 'Óculos ampla visão contra respingos', epiType: 'proteção_ocular', expiryDate: null, terminalId: 't1' },
+    { id: 'epi5', name: 'Roupa de Proteção Química', description: 'Macacão de proteção contra agentes químicos', epiType: 'proteção_corpo', expiryDate: '2026-12-01', terminalId: 't2' },
+  ],
+  userEPIs: [
+    { id: 'ue1', epiId: 'epi1', userId: 'u2', deliveryDate: '2025-03-01', expiryDate: null, responsible: 'Coordenador SST', observations: '', usageStatus: 'em_uso' },
+    { id: 'ue2', epiId: 'epi2', userId: 'u2', deliveryDate: '2025-09-15', expiryDate: '2026-03-15', responsible: 'Coordenador SST', observations: 'Tamanho M', usageStatus: 'vencido' },
+    { id: 'ue3', epiId: 'epi3', userId: 'u2', deliveryDate: '2025-11-01', expiryDate: '2026-05-01', responsible: 'Coordenador SST', observations: '', usageStatus: 'em_uso' },
+    { id: 'ue4', epiId: 'epi1', userId: 'u3', deliveryDate: '2025-04-10', expiryDate: null, responsible: 'Supervisor Área', observations: '', usageStatus: 'entregue' },
+    { id: 'ue5', epiId: 'epi5', userId: 'u3', deliveryDate: '2025-06-01', expiryDate: '2026-06-01', responsible: 'Supervisor Área', observations: 'Tamanho G', usageStatus: 'em_uso' },
+  ],
+  complianceItems: [
+    { id: 'ci1', name: 'Inspeção de extintores', responsible: 'Coordenador SST', status: 'conforme', expiryDate: '2026-08-01', userId: null, notes: 'Última inspeção realizada em Jan/2026', terminalId: 't1', area: 'Pátio de contêineres', verificationDate: '2026-01-15' },
+    { id: 'ci2', name: 'Licença ambiental', responsible: 'Gerência Ambiental', status: 'atencao', expiryDate: '2026-05-15', userId: null, notes: 'Renovação em andamento', terminalId: 't2', area: 'Administração', verificationDate: '2026-03-01' },
+    { id: 'ci3', name: 'Certificação NR-29', responsible: 'Supervisor Portuário', status: 'nao_conforme', expiryDate: '2026-01-10', userId: 'u2', notes: 'Aguardando agendamento', terminalId: 't1', area: 'Berço 101', verificationDate: null },
+  ],
+  terminalModules: [
+    { terminalId: 't1', activeModules: ['emergency_management', 'operational_safety'] },
+    { terminalId: 't2', activeModules: ['emergency_management', 'operational_safety'] },
+    { terminalId: 't3', activeModules: ['emergency_management'] },
+  ],
+};

@@ -1,0 +1,730 @@
+import { useState, useMemo } from 'react';
+import { useAuth } from '@/lib/auth-context';
+import { Training, UserTraining } from '@/lib/types';
+import { canManage, getVisibleTerminalIds, isTerminalLocked } from '@/lib/access-control';
+import {
+  GraduationCap, Plus, Trash2, CheckCircle, AlertTriangle, Clock, X, Users, UserPlus,
+  Filter, Search, ChevronDown, ChevronUp, CalendarDays, Shield, FileText, Award,
+  Video, Upload, ExternalLink, Paperclip, CheckSquare2
+} from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { AssignUsersModal } from './AssignUsersModal';
+
+const COLORS = {
+  valid: 'hsl(142, 71%, 45%)',
+  soon: 'hsl(38, 92%, 50%)',
+  expired: 'hsl(0, 72%, 51%)',
+};
+
+const now = new Date();
+const soonDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+type TrainingStatus = 'valid' | 'soon' | 'expired' | 'pending';
+
+function getStatus(expiryDate: string): TrainingStatus {
+  const d = new Date(expiryDate);
+  if (d < now) return 'expired';
+  if (d <= soonDate) return 'soon';
+  return 'valid';
+}
+
+function fmtDate(iso: string) { return new Date(iso).toLocaleDateString('pt-BR'); }
+function daysUntil(iso: string) { return Math.ceil((new Date(iso).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)); }
+
+function statusBadge(status: TrainingStatus) {
+  switch (status) {
+    case 'expired': return <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-primary/15 text-primary border border-primary/30">VENCIDO</span>;
+    case 'soon': return <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-warning/15 text-warning border border-warning/30">ATENÇÃO</span>;
+    case 'valid': return <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-success/15 text-success border border-success/30">CONCLUÍDO</span>;
+    case 'pending': return <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-muted text-muted-foreground border border-border">PENDENTE</span>;
+  }
+}
+
+function statusBarColor(status: TrainingStatus) {
+  switch (status) {
+    case 'expired': return 'bg-primary';
+    case 'soon': return 'bg-warning';
+    case 'valid': return 'bg-success';
+    case 'pending': return 'bg-muted-foreground';
+  }
+}
+
+export function TrainingsView() {
+  const { user, data, setData } = useAuth();
+  const [showForm, setShowForm] = useState(false);
+  const [showAssignForm, setShowAssignForm] = useState<string | null>(null);
+  const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'user' | 'training'>('training');
+  const [form, setForm] = useState({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalId: '' });
+  const [formError, setFormError] = useState('');
+  const [batchAssign, setBatchAssign] = useState<string | null>(null);
+  const [assignForm, setAssignForm] = useState({ userId: '', completedDate: '', expiryDate: '', certificate: '' });
+
+  // Terminal isolation
+  const visibleTerminalIds = useMemo(() => getVisibleTerminalIds(user, data), [user, data]);
+  const terminalLocked = isTerminalLocked(user);
+
+  // Filters — auto-lock terminal for non-admin users
+  const [filterTerminal, setFilterTerminal] = useState('all');
+  const effectiveTerminalFilter = terminalLocked && visibleTerminalIds.length === 1 ? visibleTerminalIds[0] : filterTerminal;
+  const [filterStatus, setFilterStatus] = useState<'all' | TrainingStatus>('all');
+  const [filterMandatory, setFilterMandatory] = useState<'all' | 'yes' | 'no'>('all');
+  const [searchUser, setSearchUser] = useState('');
+
+  // Classified — scoped to visible terminals
+  const classified = useMemo(() => {
+    return data.userTrainings.map(ut => {
+      const u = data.users.find(u => u.id === ut.userId);
+      const training = data.trainings.find(t => t.id === ut.trainingId);
+      return { ...ut, status: getStatus(ut.expiryDate), user: u, training };
+    }).filter(ut => {
+      if (!ut.user) return false;
+      return visibleTerminalIds.includes(ut.user.linkId || '');
+    });
+  }, [data, visibleTerminalIds]);
+
+  // Filtered
+  const filteredAssignments = useMemo(() => {
+    return classified.filter(ut => {
+      if (filterStatus !== 'all' && ut.status !== filterStatus) return false;
+      if (effectiveTerminalFilter !== 'all' && ut.user?.linkId !== effectiveTerminalFilter) return false;
+      if (filterMandatory === 'yes' && !ut.training?.mandatory) return false;
+      if (filterMandatory === 'no' && ut.training?.mandatory) return false;
+      if (searchUser && ut.user && !ut.user.name.toLowerCase().includes(searchUser.toLowerCase())) return false;
+      return true;
+    });
+  }, [classified, filterStatus, effectiveTerminalFilter, filterMandatory, searchUser]);
+
+  const validCount = classified.filter(c => c.status === 'valid').length;
+  const soonCount = classified.filter(c => c.status === 'soon').length;
+  const expiredCount = classified.filter(c => c.status === 'expired').length;
+
+  // Pending: mandatory trainings not assigned to any user or expired
+  const pendingCount = useMemo(() => {
+    let count = 0;
+    const mandatoryTrainings = data.trainings.filter(t => t.mandatory);
+    for (const u of data.users) {
+      for (const t of mandatoryTrainings) {
+        const has = data.userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired');
+        if (!has) count++;
+      }
+    }
+    return count;
+  }, [data]);
+
+  // Charts
+  const donutData = [
+    { name: 'Em dia', value: validCount, color: COLORS.valid },
+    { name: 'Atenção', value: soonCount, color: COLORS.soon },
+    { name: 'Vencidos', value: expiredCount, color: COLORS.expired },
+  ].filter(d => d.value > 0);
+
+  const barData = data.terminals.map(t => {
+    const tUsers = data.users.filter(u => u.linkId === t.id).map(u => u.id);
+    const tClassified = classified.filter(c => tUsers.includes(c.userId));
+    return {
+      name: t.name.length > 14 ? t.name.substring(0, 14) + '…' : t.name,
+      'Em dia': tClassified.filter(c => c.status === 'valid').length,
+      'Atenção': tClassified.filter(c => c.status === 'soon').length,
+      'Vencidos': tClassified.filter(c => c.status === 'expired').length,
+    };
+  });
+
+  const hasChartData = classified.length > 0;
+
+  // User-centric grouping
+  const userGroups = useMemo(() => {
+    const map = new Map<string, typeof filteredAssignments>();
+    for (const a of filteredAssignments) {
+      const key = a.userId;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(a);
+    }
+    return Array.from(map.entries())
+      .map(([userId, items]) => {
+        const u = data.users.find(u => u.id === userId);
+        const mandatoryTrainings = data.trainings.filter(t => t.mandatory);
+        const completedMandatory = mandatoryTrainings.filter(t =>
+          items.some(i => i.trainingId === t.id && i.status !== 'expired')
+        ).length;
+        // Find pending mandatory trainings for this user
+        const pendingTrainings = mandatoryTrainings.filter(t =>
+          !data.userTrainings.some(ut => ut.userId === userId && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired')
+        );
+        return {
+          userId, user: u, items,
+          hasExpired: items.some(i => i.status === 'expired'),
+          hasSoon: items.some(i => i.status === 'soon'),
+          mandatoryTotal: mandatoryTrainings.length,
+          mandatoryCompleted: completedMandatory,
+          pendingTrainings,
+        };
+      })
+      .sort((a, b) => {
+        if (a.hasExpired !== b.hasExpired) return a.hasExpired ? -1 : 1;
+        if (a.hasSoon !== b.hasSoon) return a.hasSoon ? -1 : 1;
+        return (a.user?.name || '').localeCompare(b.user?.name || '');
+      });
+  }, [filteredAssignments, data.users, data.trainings, data.userTrainings]);
+
+  // Also include users with NO assignments but with pending mandatory trainings
+  const allUserGroups = useMemo(() => {
+    const existingUserIds = new Set(userGroups.map(g => g.userId));
+    const mandatoryTrainings = data.trainings.filter(t => t.mandatory);
+    if (mandatoryTrainings.length === 0) return userGroups;
+
+    const additionalUsers = data.users
+      .filter(u => !existingUserIds.has(u.id))
+      .filter(u => {
+        if (filterTerminal !== 'all' && u.linkId !== filterTerminal) return false;
+        if (searchUser && !u.name.toLowerCase().includes(searchUser.toLowerCase())) return false;
+        return true;
+      })
+      .map(u => {
+        const pendingTrainings = mandatoryTrainings.filter(t =>
+          !data.userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired')
+        );
+        if (pendingTrainings.length === 0) return null;
+        return {
+          userId: u.id, user: u, items: [] as typeof filteredAssignments,
+          hasExpired: false, hasSoon: false,
+          mandatoryTotal: mandatoryTrainings.length, mandatoryCompleted: 0,
+          pendingTrainings,
+        };
+      })
+      .filter(Boolean) as typeof userGroups;
+
+    return [...userGroups, ...additionalUsers];
+  }, [userGroups, data.users, data.trainings, data.userTrainings, filterTerminal, searchUser]);
+
+  // Actions
+  const addTraining = () => {
+    if (!form.name) { setFormError('Informe o nome do treinamento.'); return; }
+    setFormError('');
+    const t: Training = {
+      id: `tr${Date.now()}`, name: form.name, description: form.description, mandatory: form.mandatory,
+      materialFileName: form.materialFileName || undefined,
+      videoUrl: form.videoUrl || undefined,
+      terminalId: form.terminalId || undefined,
+    };
+    setData(d => ({ ...d, trainings: [...d.trainings, t] }));
+    setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalId: '' });
+    setShowForm(false);
+  };
+
+  // Batch assign training to multiple users
+  const batchAssignTraining = (trainingId: string, userIds: string[]) => {
+    if (userIds.length === 0) return;
+    const today = new Date().toISOString().split('T')[0];
+    const oneYear = new Date(new Date().getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const newUts: UserTraining[] = userIds
+      .filter(uid => !data.userTrainings.some(ut => ut.trainingId === trainingId && ut.userId === uid))
+      .map((uid, i) => ({
+        id: `ut${Date.now()}${i}`, trainingId, userId: uid,
+        completedDate: today, expiryDate: oneYear,
+      }));
+    if (newUts.length > 0) {
+      setData(d => ({ ...d, userTrainings: [...d.userTrainings, ...newUts] }));
+    }
+    setBatchAssign(null);
+  };
+
+
+  const removeTraining = (id: string) => {
+    setData(d => ({ ...d, trainings: d.trainings.filter(t => t.id !== id), userTrainings: d.userTrainings.filter(ut => ut.trainingId !== id) }));
+  };
+
+  const assignTraining = (trainingId: string) => {
+    if (!assignForm.userId || !assignForm.completedDate || !assignForm.expiryDate) return;
+    const ut: UserTraining = {
+      id: `ut${Date.now()}`, trainingId, userId: assignForm.userId,
+      completedDate: assignForm.completedDate, expiryDate: assignForm.expiryDate,
+      certificate: assignForm.certificate || undefined,
+    };
+    setData(d => ({ ...d, userTrainings: [...d.userTrainings, ut] }));
+    setAssignForm({ userId: '', completedDate: '', expiryDate: '', certificate: '' });
+    setShowAssignForm(null);
+  };
+
+  const removeUserTraining = (id: string) => {
+    setData(d => ({ ...d, userTrainings: d.userTrainings.filter(ut => ut.id !== id) }));
+  };
+
+  // Quick completion: mark a training as completed for a user with today's date and +1 year expiry
+  const quickComplete = (trainingId: string, userId: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const oneYearLater = new Date(new Date().getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const ut: UserTraining = {
+      id: `ut${Date.now()}`, trainingId, userId,
+      completedDate: today, expiryDate: oneYearLater,
+    };
+    setData(d => ({ ...d, userTrainings: [...d.userTrainings, ut] }));
+  };
+
+  if (!user || (user.role !== 'admin' && user.role !== 'terminal')) return <p className="text-muted-foreground text-sm">Acesso restrito.</p>;
+  // Estratégico can view but not manage
+  const isEstrategico = user.accessLevel === 'estratégico';
+  const userCanManage = canManage(user);
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <GraduationCap size={20} className="text-primary" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-foreground tracking-tight">Gestão de Treinamentos</h1>
+            <p className="text-xs text-muted-foreground">Biblioteca do terminal — atribua treinamentos aos usuários para delegação</p>
+          </div>
+        </div>
+        {userCanManage && (
+          <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
+            <Plus size={14} /> Novo Treinamento
+          </button>
+        )}
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <div className="bg-card border rounded-xl p-3 text-center">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Total</p>
+          <p className="text-xl font-mono font-bold text-foreground">{data.trainings.length}</p>
+          <p className="text-[10px] text-muted-foreground">{data.trainings.filter(t => t.mandatory).length} obrigatórios</p>
+        </div>
+        <div className="bg-card border border-success/20 rounded-xl p-3 text-center">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Concluídos</p>
+          <p className="text-xl font-mono font-bold text-success">{validCount}</p>
+        </div>
+        <div className="bg-card border border-warning/20 rounded-xl p-3 text-center">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Atenção</p>
+          <p className="text-xl font-mono font-bold text-warning">{soonCount}</p>
+        </div>
+        <div className="bg-card border border-primary/20 rounded-xl p-3 text-center">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Vencidos</p>
+          <p className="text-xl font-mono font-bold text-primary">{expiredCount}</p>
+        </div>
+        <div className="bg-card border rounded-xl p-3 text-center">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Pendentes</p>
+          <p className="text-xl font-mono font-bold text-muted-foreground">{pendingCount}</p>
+        </div>
+      </div>
+
+      {/* Charts */}
+      {hasChartData && (
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="bg-card border rounded-xl p-3">
+            <h3 className="text-xs font-bold text-foreground mb-2">Visão Geral</h3>
+            <div className="h-[140px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={donutData} dataKey="value" cx="50%" cy="50%" outerRadius={55} innerRadius={30} paddingAngle={3}>
+                    {donutData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: 'hsl(0,0%,10%)', border: 'none', borderRadius: 8, fontSize: 12, color: '#fff' }} />
+                  <Legend formatter={(value) => <span className="text-xs text-muted-foreground">{value}</span>} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="bg-card border rounded-xl p-3">
+            <h3 className="text-xs font-bold text-foreground mb-2">Por Terminal</h3>
+            <div className="h-[140px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={barData} barGap={2}>
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'hsl(0,0%,45%)' }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: 'hsl(0,0%,45%)' }} />
+                  <Tooltip contentStyle={{ background: 'hsl(0,0%,10%)', border: 'none', borderRadius: 8, fontSize: 12, color: '#fff' }} />
+                  <Bar dataKey="Em dia" stackId="a" fill={COLORS.valid} />
+                  <Bar dataKey="Atenção" stackId="a" fill={COLORS.soon} />
+                  <Bar dataKey="Vencidos" stackId="a" fill={COLORS.expired} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="bg-card border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Filter size={14} className="text-muted-foreground" />
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Filtros</span>
+          </div>
+          <div className="flex gap-1">
+            <button onClick={() => setViewMode('user')} className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${viewMode === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>
+              <Users size={12} className="inline mr-1" />Por Usuário
+            </button>
+            <button onClick={() => setViewMode('training')} className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${viewMode === 'training' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>
+              <GraduationCap size={12} className="inline mr-1" />Por Treinamento
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="relative col-span-2 md:col-span-1">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input type="text" placeholder="Buscar usuário..." value={searchUser} onChange={e => setSearchUser(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-xs bg-secondary/50 border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+          </div>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)}
+            className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+            <option value="all">Todos os status</option>
+            <option value="valid">Em dia</option>
+            <option value="soon">Atenção</option>
+            <option value="expired">Vencido</option>
+          </select>
+          <select value={filterMandatory} onChange={e => setFilterMandatory(e.target.value as any)}
+            className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+            <option value="all">Todos os tipos</option>
+            <option value="yes">Obrigatórios</option>
+            <option value="no">Opcionais</option>
+          </select>
+          {!terminalLocked && (
+            <select value={filterTerminal} onChange={e => setFilterTerminal(e.target.value)}
+              className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+              <option value="all">Todos os terminais</option>
+              {data.terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS.valid }} /> {validCount}</span>
+            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS.soon }} /> {soonCount}</span>
+            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS.expired }} /> {expiredCount}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Add Training Form */}
+      {showForm && (
+        <div className="bg-card border border-primary/20 rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-foreground">Cadastrar Novo Treinamento</h3>
+            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground"><X size={16} /></button>
+          </div>
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Nome</label>
+              <input placeholder="Nome do treinamento" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Terminal</label>
+              <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))}
+                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground">
+                <option value="">Selecione o terminal...</option>
+                {data.terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer h-10 px-3">
+                <input type="checkbox" checked={form.mandatory} onChange={e => setForm(f => ({ ...f, mandatory: e.target.checked }))} className="rounded border-input" />
+                Obrigatório
+              </label>
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Descrição</label>
+            <textarea placeholder="Descrição do treinamento" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground" rows={2} />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">
+                <Paperclip size={10} className="inline mr-1" />Material (PDF, PPT)
+              </label>
+              <div className="flex gap-2">
+                <input placeholder="Nome do arquivo (ex: manual.pdf)" value={form.materialFileName} onChange={e => setForm(f => ({ ...f, materialFileName: e.target.value }))}
+                  className="flex-1 h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
+                <button type="button" className="h-10 px-3 bg-secondary text-muted-foreground text-xs font-bold rounded-lg hover:bg-secondary/80 flex items-center gap-1">
+                  <Upload size={12} /> Upload
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">
+                <Video size={10} className="inline mr-1" />Link de Vídeo
+              </label>
+              <input placeholder="https://youtube.com/..." value={form.videoUrl} onChange={e => setForm(f => ({ ...f, videoUrl: e.target.value }))}
+                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
+            </div>
+          </div>
+          <p className="text-[10px] text-muted-foreground">Após salvar, use o botão <strong>"Atribuir a Usuários"</strong> para delegar a usuários específicos.</p>
+          {formError && <p className="text-xs text-primary font-bold">{formError}</p>}
+          <button onClick={addTraining} className="px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110">Salvar Treinamento</button>
+        </div>
+      )}
+
+      {/* ===== USER VIEW ===== */}
+      {viewMode === 'user' && (
+        <div className="space-y-3">
+          {allUserGroups.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground text-sm">Nenhum resultado encontrado.</div>
+          )}
+          {allUserGroups.map(({ userId, user: u, items, hasExpired, hasSoon, mandatoryTotal, mandatoryCompleted, pendingTrainings }) => {
+            const isExpanded = expandedUser === userId;
+            const terminal = u?.linkId ? data.terminals.find(t => t.id === u.linkId) : null;
+            const expCount = items.filter(i => i.status === 'expired').length;
+            const soonC = items.filter(i => i.status === 'soon').length;
+
+            return (
+              <div key={userId} className={`bg-card border rounded-xl overflow-hidden transition-all ${hasExpired ? 'border-primary/30' : hasSoon ? 'border-warning/30' : ''}`}>
+                <button
+                  onClick={() => setExpandedUser(isExpanded ? null : userId)}
+                  className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-secondary/30 transition-colors"
+                >
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${hasExpired ? 'bg-primary/15 text-primary' : hasSoon ? 'bg-warning/15 text-warning' : 'bg-secondary text-foreground'}`}>
+                    {u?.name.charAt(0) || '?'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-foreground">{u?.name || userId}</p>
+                      {terminal && <span className="text-[9px] bg-secondary rounded px-1.5 py-0.5 text-muted-foreground">{terminal.name}</span>}
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 flex-wrap">
+                      <span className="text-[10px] text-muted-foreground">{items.length} treinamento(s)</span>
+                      <span className="text-[10px] text-muted-foreground">Obrigatórios: <strong className={mandatoryCompleted === mandatoryTotal ? 'text-success' : 'text-primary'}>{mandatoryCompleted}/{mandatoryTotal}</strong></span>
+                      {expCount > 0 && <span className="text-[10px] text-primary font-bold">⚠ {expCount} vencido(s)</span>}
+                      {soonC > 0 && <span className="text-[10px] text-warning font-bold">⏰ {soonC} atenção</span>}
+                      {pendingTrainings.length > 0 && <span className="text-[10px] text-muted-foreground font-bold">📋 {pendingTrainings.length} pendente(s)</span>}
+                    </div>
+                  </div>
+                  {/* Mini status bar */}
+                  <div className="flex gap-0.5 h-2 w-20 rounded-full overflow-hidden bg-secondary shrink-0">
+                    {items.map((item, i) => (
+                      <div key={i} className={`flex-1 ${statusBarColor(item.status)}`} />
+                    ))}
+                  </div>
+                  {isExpanded ? <ChevronUp size={16} className="text-muted-foreground shrink-0" /> : <ChevronDown size={16} className="text-muted-foreground shrink-0" />}
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t divide-y divide-border">
+                    {items.map(ut => {
+                      const training = ut.training;
+                      if (!training) return null;
+                      const days = daysUntil(ut.expiryDate);
+
+                      return (
+                        <div key={ut.id} className={`px-5 py-4 ${ut.status === 'expired' ? 'bg-primary/5' : ut.status === 'soon' ? 'bg-warning/5' : ''}`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <span className="text-sm font-semibold text-foreground">{training.name}</span>
+                                {training.mandatory && <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded font-bold">OBRIGATÓRIO</span>}
+                                {statusBadge(ut.status)}
+                              </div>
+                              <p className="text-[10px] text-muted-foreground mb-1">{training.description}</p>
+                              {/* Material do treinamento */}
+                              {(training.materialFileName || training.videoUrl) && (
+                                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                  {training.materialFileName && (
+                                    <button className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors">
+                                      <FileText size={10} /> {training.materialFileName}
+                                    </button>
+                                  )}
+                                  {training.videoUrl && (
+                                    <a href={training.videoUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-accent text-accent-foreground rounded-lg hover:brightness-110 transition-colors">
+                                      <Video size={10} /> Vídeo <ExternalLink size={8} />
+                                    </a>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Details */}
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                  <CheckCircle size={11} className="shrink-0" />
+                                  <span>Realizado: <strong className="text-foreground">{fmtDate(ut.completedDate)}</strong></span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                  <Clock size={11} className="shrink-0" />
+                                  <span>Vence: <strong className={ut.status === 'expired' ? 'text-primary' : ut.status === 'soon' ? 'text-warning' : 'text-foreground'}>{fmtDate(ut.expiryDate)}</strong></span>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-[10px]">
+                                  <Shield size={11} className="shrink-0 text-muted-foreground" />
+                                  <span className={days < 0 ? 'text-primary font-bold' : days <= 30 ? 'text-warning font-bold' : 'text-muted-foreground'}>
+                                    {days < 0 ? `Vencido há ${Math.abs(days)} dias` : `${days} dias restantes`}
+                                  </span>
+                                </div>
+                                {ut.certificate && (
+                                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                    <Award size={11} className="shrink-0" />
+                                    <span>Certificado: <strong className="text-foreground">{ut.certificate}</strong></span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Timeline */}
+                              <div className="border-l-2 border-border pl-3 ml-1 space-y-2">
+                                <div className="flex items-center gap-2 text-[10px]">
+                                  <div className="w-4 h-4 rounded-full flex items-center justify-center -ml-[21px] bg-card border border-border">
+                                    <CheckCircle size={9} className="text-success" />
+                                  </div>
+                                  <span className="text-muted-foreground">{fmtDate(ut.completedDate)}</span>
+                                  <span className="text-foreground">Treinamento realizado</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-[10px]">
+                                  <div className="w-4 h-4 rounded-full flex items-center justify-center -ml-[21px] bg-card border border-border">
+                                    <CalendarDays size={9} className={ut.status === 'expired' ? 'text-primary' : 'text-muted-foreground'} />
+                                  </div>
+                                  <span className="text-muted-foreground">{fmtDate(ut.expiryDate)}</span>
+                                  <span className={ut.status === 'expired' ? 'text-primary font-bold' : 'text-foreground'}>
+                                    {ut.status === 'expired' ? 'Treinamento venceu' : 'Vencimento previsto'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <button onClick={() => removeUserTraining(ut.id)} className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors shrink-0">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Pending mandatory trainings */}
+                    {pendingTrainings.length > 0 && (
+                      <div className="px-5 py-3 bg-muted/30">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Treinamentos Pendentes</p>
+                        <div className="space-y-2">
+                          {pendingTrainings.map(t => (
+                            <div key={t.id} className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <GraduationCap size={12} className="text-muted-foreground shrink-0" />
+                                <span className="text-xs text-foreground">{t.name}</span>
+                                {statusBadge('pending')}
+                                {t.mandatory && <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded font-bold">OBRIGATÓRIO</span>}
+                              </div>
+                              {userCanManage && (
+                                <button
+                                  onClick={() => quickComplete(t.id, userId)}
+                                  className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-success bg-success/10 rounded-lg hover:bg-success/20 transition-colors shrink-0"
+                                >
+                                  <CheckCircle size={11} /> Marcar Concluído
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ===== TRAINING VIEW ===== */}
+      {viewMode === 'training' && (
+        <div className="space-y-4">
+          {data.trainings
+            .filter(t => filterMandatory === 'all' || (filterMandatory === 'yes' ? t.mandatory : !t.mandatory))
+            .map(training => {
+              const assignments = filteredAssignments.filter(a => a.trainingId === training.id);
+              const expCount = assignments.filter(a => a.status === 'expired').length;
+
+              return (
+                <div key={training.id} className="bg-card border rounded-xl overflow-hidden">
+                  <div className="px-5 py-4 flex items-center justify-between border-b">
+                    <div className="flex items-center gap-3">
+                      <GraduationCap size={16} className="text-primary shrink-0" />
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-foreground">{training.name}</span>
+                          {training.mandatory && <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded font-bold">OBRIGATÓRIO</span>}
+                          {training.terminalId && (() => { const t = data.terminals.find(t => t.id === training.terminalId); return t ? <span className="text-[9px] px-1.5 py-0.5 bg-accent text-accent-foreground rounded font-bold">{t.name}</span> : null; })()}
+                          {!training.terminalId && <span className="text-[9px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded font-bold">GLOBAL</span>}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{training.description}</p>
+                        {(training.materialFileName || training.videoUrl) && (
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            {training.materialFileName && (
+                              <button className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors">
+                                <FileText size={10} /> {training.materialFileName}
+                              </button>
+                            )}
+                            {training.videoUrl && (
+                              <a href={training.videoUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-accent text-accent-foreground rounded-lg hover:brightness-110 transition-colors">
+                                <Video size={10} /> Assistir Vídeo <ExternalLink size={8} />
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {expCount > 0 && <span className="flex items-center gap-1 text-[10px] text-primary font-bold"><AlertTriangle size={12} /> {expCount}</span>}
+                      {userCanManage && (
+                        <button onClick={() => setBatchAssign(training.id)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors" title="Atribuir a usuários">
+                          <UserPlus size={12} /> Atribuir a Usuários
+                        </button>
+                      )}
+                      {userCanManage && <button onClick={() => removeTraining(training.id)} className="p-1.5 text-destructive/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 size={14} /></button>}
+                    </div>
+                  </div>
+
+                  {assignments.length > 0 ? (
+                    <div className="divide-y divide-border">
+                      {assignments.map(ut => {
+                        const u = ut.user;
+                        const days = daysUntil(ut.expiryDate);
+                        return (
+                          <div key={ut.id} className={`px-5 py-3 flex items-center justify-between ${ut.status === 'expired' ? 'bg-primary/5' : ut.status === 'soon' ? 'bg-warning/5' : ''}`}>
+                            <div className="flex items-center gap-3">
+                              <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-[10px] font-bold text-foreground shrink-0">{u?.name.charAt(0) || '?'}</div>
+                              <div>
+                                <span className="text-xs font-medium text-foreground">{u?.name || ut.userId}</span>
+                                <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                                  <span className="text-[10px] text-muted-foreground flex items-center gap-1"><CheckCircle size={10} /> {fmtDate(ut.completedDate)}</span>
+                                  <span className="text-[10px] text-muted-foreground flex items-center gap-1"><Clock size={10} /> {fmtDate(ut.expiryDate)}</span>
+                                  <span className={`text-[10px] ${days < 0 ? 'text-primary font-bold' : days <= 30 ? 'text-warning font-bold' : 'text-muted-foreground'}`}>
+                                    {days < 0 ? `${Math.abs(days)}d atrás` : `${days}d restantes`}
+                                  </span>
+                                  {ut.certificate && <span className="text-[10px] text-muted-foreground flex items-center gap-1"><Award size={10} /> {ut.certificate}</span>}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {statusBadge(ut.status)}
+                              {userCanManage && <button onClick={() => removeUserTraining(ut.id)} className="p-1 text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={12} /></button>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="px-5 py-4 text-center text-xs text-muted-foreground">Nenhum usuário associado.</div>
+                  )}
+                </div>
+              );
+            })}
+
+          {data.trainings.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground text-sm">Nenhum treinamento cadastrado.</div>
+          )}
+        </div>
+      )}
+
+      {/* Assign Users Modal */}
+      {batchAssign && (
+        <AssignUsersModal
+          open={!!batchAssign}
+          onClose={() => setBatchAssign(null)}
+          title={`Atribuir Treinamento`}
+          description={`Selecione os usuários que receberão o treinamento "${data.trainings.find(t => t.id === batchAssign)?.name || ''}".`}
+          confirmLabel="Confirmar Atribuição"
+          users={data.users}
+          terminals={data.terminals}
+          alreadyAssignedIds={new Set(data.userTrainings.filter(ut => ut.trainingId === batchAssign).map(ut => ut.userId))}
+          onConfirm={(userIds) => batchAssignTraining(batchAssign, userIds)}
+        />
+      )}
+    </div>
+  );
+}
