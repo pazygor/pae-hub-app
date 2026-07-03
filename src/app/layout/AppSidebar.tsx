@@ -2,8 +2,8 @@ import { NavLink } from 'react-router-dom';
 import { LogOut, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { usePresentationMode, maskName, maskEmail } from '@/lib/presentation-mode';
-import { isMenuItemAccessible, getDefaultModules, getDefaultSafetySubModules, getPackageLabel, ProductModule, SafetySubModule } from '@/lib/modules';
-import { getAccessLevelMenuFilter } from '@/lib/access-control';
+import { isMenuItemAccessible, getPackageLabel } from '@/lib/modules';
+import { getAccessLevelMenuFilter, getUserActiveConfig } from '@/lib/access-control';
 import { NAV_CONFIG } from './nav-config';
 import m1Logo from '@/assets/m1-logo.png';
 
@@ -21,18 +21,8 @@ export function AppSidebar({ collapsed }: Props) {
 
   const hasActiveEmergency = data.occurrences.some(o => o.status === 'emergência ativa');
 
-  // Módulos ativos do terminal vinculado (licenciamento)
-  const getActiveConfig = (): { modules: ProductModule[]; safetySubModules: SafetySubModule[] } => {
-    if (user.role === 'admin') return { modules: getDefaultModules(), safetySubModules: getDefaultSafetySubModules() };
-    const terminalId = user.linkId;
-    if (!terminalId) return { modules: getDefaultModules(), safetySubModules: getDefaultSafetySubModules() };
-    const config = data.terminalModules?.find(tm => tm.terminalId === terminalId);
-    return {
-      modules: config ? config.activeModules : getDefaultModules(),
-      safetySubModules: config?.activeSafetySubModules ?? getDefaultSafetySubModules(),
-    };
-  };
-  const { modules: activeModules, safetySubModules: activeSafetySubs } = getActiveConfig();
+  // Módulos ativos do terminal vinculado (licenciamento) — fonte única
+  const { modules: activeModules, safetySubModules: activeSafetySubs } = getUserActiveConfig(user, data);
 
   const accessLevelFilter = getAccessLevelMenuFilter(user);
 

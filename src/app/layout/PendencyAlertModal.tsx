@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle as AlertTriangleIcon, X, GraduationCap, HardHat, ClipboardCheck } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { getDefaultSafetySubModules } from '@/lib/modules';
+import { getUserActiveConfig } from '@/lib/access-control';
 
 /**
  * Alerta de pendências operacionais exibido após o login (movido do PAESystem).
@@ -20,11 +20,7 @@ export function PendencyAlertModal() {
   // === Pendency calculation (herdado do PAESystem) ===
   const now = new Date();
   const soonThreshold = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-  const activeSubs = (() => {
-    if (user.role === 'admin') return getDefaultSafetySubModules();
-    const config = data.terminalModules?.find(tm => tm.terminalId === user.linkId);
-    return config?.activeSafetySubModules ?? getDefaultSafetySubModules();
-  })();
+  const { safetySubModules: activeSubs } = getUserActiveConfig(user, data);
   const pendingTrainings = activeSubs.includes('trainings')
     ? data.trainings.filter(t => t.mandatory && !data.userTrainings.some(ut => ut.userId === user.id && ut.trainingId === t.id && new Date(ut.expiryDate) >= now)).length
     : 0;

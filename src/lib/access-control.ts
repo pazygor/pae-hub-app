@@ -1,4 +1,24 @@
 import { AppUser, AccessLevel, AppData } from './types';
+import { ProductModule, SafetySubModule, getDefaultModules, getDefaultSafetySubModules } from './modules';
+
+/**
+ * Módulos/submódulos ativos para o usuário, conforme o licenciamento do
+ * terminal vinculado (admin enxerga tudo). Fonte única — usada por sidebar,
+ * guards de rota e alerta de pendências.
+ */
+export function getUserActiveConfig(
+  user: AppUser | null,
+  data: AppData,
+): { modules: ProductModule[]; safetySubModules: SafetySubModule[] } {
+  if (!user || user.role === 'admin' || !user.linkId) {
+    return { modules: getDefaultModules(), safetySubModules: getDefaultSafetySubModules() };
+  }
+  const config = data.terminalModules?.find(tm => tm.terminalId === user.linkId);
+  return {
+    modules: config ? config.activeModules : getDefaultModules(),
+    safetySubModules: config?.activeSafetySubModules ?? getDefaultSafetySubModules(),
+  };
+}
 
 /**
  * Returns the list of terminal IDs visible to the current user.

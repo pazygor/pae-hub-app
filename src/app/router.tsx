@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, useLoca
 import { useAuth } from '@/lib/auth-context';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { RequireAuth } from './guards/RequireAuth';
+import { RequireAccess } from './guards/RequireAccess';
 import { AppShell } from './layout/AppShell';
 import { EmergencyDispatchProvider, useEmergencyDispatch } from './layout/EmergencyDispatchProvider';
 import { defaultPathForUser, pathForView, situationRoomPath } from './layout/nav-config';
@@ -118,8 +119,9 @@ export function AppRouter() {
             {/* Index: painel mobile (tela cheia) ou redirect por perfil */}
             <Route path="/" element={<IndexGate />} />
 
-            {/* Shell (sidebar + header + footer) */}
+            {/* Shell (sidebar + header + footer) + guard de acesso por rota */}
             <Route element={<AppShell />}>
+              <Route element={<RequireAccess />}>
               <Route path="/meu-painel" element={<MyPanelView />} />
               <Route path="/centro-de-operacoes" element={<CopPage />} />
               <Route path="/dashboard" element={<DashboardView />} />
@@ -151,6 +153,7 @@ export function AppRouter() {
               <Route path="/pacotes-do-sistema" element={<ModulesView />} />
               <Route path="/organograma" element={<OrgChartView />} />
               <Route path="/sobre" element={<AboutView />} />
+              </Route>
             </Route>
           </Route>
         </Route>

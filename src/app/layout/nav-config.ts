@@ -69,6 +69,15 @@ export function navItemForPath(pathname: string): NavItem | undefined {
   return NAV_CONFIG.find(i => i.path === pathname);
 }
 
+/**
+ * menuId (id legado de view) para a URL atual — usado pelo guard de acesso.
+ * A Sala de Situação herda as regras de acesso de 'occurrences'.
+ */
+export function menuIdForPath(pathname: string): string | undefined {
+  if (SITUATION_ROOM_RE.test(pathname)) return 'occurrences';
+  return navItemForPath(pathname)?.id;
+}
+
 /** Título do header para a URL atual. */
 export function headerLabelForPath(pathname: string): string {
   if (SITUATION_ROOM_RE.test(pathname)) return 'Sala de Situação';
