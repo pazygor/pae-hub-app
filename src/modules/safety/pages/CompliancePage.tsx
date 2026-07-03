@@ -25,7 +25,7 @@ const COMPLIANCE_STATUS_MAP: Record<ComplianceStatus, SafetyStatus> = {
 
 function fmtDate(iso: string) { return new Date(iso).toLocaleDateString('pt-BR'); }
 
-export function ComplianceView() {
+export function CompliancePage() {
   const { user, data, setData } = useAuth();
   const now = new Date();
   const soon = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);

@@ -3,7 +3,7 @@ import { useAuth } from '@/lib/auth-context';
 import { EmergencyPlan, PlanStatus } from '@/lib/types';
 import { Plus, FileText, Trash2, CheckSquare, Square } from 'lucide-react';
 
-export function PlansView() {
+export function PlansPage() {
   const { user, data, setData } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', responsible: '', status: 'ativo' as PlanStatus, checklistText: '' });

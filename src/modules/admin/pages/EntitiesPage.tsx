@@ -4,7 +4,7 @@ import { Entity } from '@/lib/types';
 import { Plus, X } from 'lucide-react';
 import { usePresentationMode, maskContact } from '@/lib/presentation-mode';
 
-export function EntitiesView() {
+export function EntitiesPage() {
   const { data, setData } = useAuth();
   const { presentationMode } = usePresentationMode();
   const [showForm, setShowForm] = useState(false);

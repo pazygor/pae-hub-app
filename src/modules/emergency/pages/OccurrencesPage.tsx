@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
+import { situationRoomPath } from '@/lib/nav-config';
 import { Occurrence, OccurrenceStatus, OccurrenceCriticality, TimelineEvent, TimelineEventType } from '@/lib/types';
 import { Plus, Siren, Trash2, Clock, ChevronDown, ChevronUp, Paperclip, User, AlertTriangle, Bell, CheckCircle, Play, RefreshCw, FileText, ShieldAlert, Filter, Timer, Radio, Download } from 'lucide-react';
-import { EmergencyResponseSection } from './EmergencyResponseSection';
-import { generateIncidentPDF } from './generateIncidentPDF';
+import { EmergencyResponseSection } from '../components/EmergencyResponseSection';
+import { generateIncidentPDF } from '../components/generateIncidentPDF';
 
 const EVENT_TYPES: TimelineEventType[] = [
   'ocorrência registrada', 'equipe acionada', 'plano de emergência ativado',
@@ -74,7 +76,9 @@ function generateIncNumber(existingOccurrences: Occurrence[]): string {
   return `INC-${next.toString().padStart(4, '0')}`;
 }
 
-export function OccurrencesView({ onOpenSituationRoom }: { onOpenSituationRoom?: (id: string) => void }) {
+export function OccurrencesPage() {
+  const navigate = useNavigate();
+  const openSituationRoom = (id: string) => navigate(situationRoomPath(id));
   const { user, data, setData } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ type: '', description: '', criticality: 'média' as OccurrenceCriticality, responsible: '', team: '' });
@@ -309,11 +313,11 @@ export function OccurrencesView({ onOpenSituationRoom }: { onOpenSituationRoom?:
                 {/* Row 1: ID + Situation Room */}
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-mono bg-secondary text-secondary-foreground px-2.5 py-1 rounded font-bold">{o.incNumber}</span>
-                  {onOpenSituationRoom && o.status !== 'resolvido' && (
+                  {o.status !== 'resolvido' && (
                     (() => {
                       const isCritical = o.criticality === 'crítica' || o.status === 'emergência ativa';
                       return (
-                        <button onClick={() => onOpenSituationRoom(o.id)} className={`px-3 py-1.5 text-[10px] font-bold rounded-lg flex items-center gap-1.5 transition-all shrink-0 ${
+                        <button onClick={() => openSituationRoom(o.id)} className={`px-3 py-1.5 text-[10px] font-bold rounded-lg flex items-center gap-1.5 transition-all shrink-0 ${
                           isCritical
                             ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30'
                             : 'bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground'

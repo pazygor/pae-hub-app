@@ -2,7 +2,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { getAccessLevelMenuFilter, getUserActiveConfig } from '@/lib/access-control';
 import { isMenuItemAccessible } from '@/lib/modules';
-import { NAV_CONFIG, menuIdForPath } from '../layout/nav-config';
+import { NAV_CONFIG, menuIdForPath } from '@/lib/nav-config';
 
 /**
  * Guard de autorização por rota — substitui o antigo `guardedSetView` do

@@ -1,14 +1,22 @@
 import { useState } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { AlertCircle } from 'lucide-react';
 import m1Logo from '@/assets/m1-logo.png';
 
-export function LoginScreen() {
-  const { login } = useAuth();
+export function LoginPage() {
+  const { user, login } = useAuth();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [showDemo, setShowDemo] = useState(false);
+
+  // Já autenticado → volta para a rota de origem (returnTo) ou para o índice.
+  if (user) {
+    const from = (location.state as { from?: string } | null)?.from;
+    return <Navigate to={from || '/'} replace />;
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -5,11 +5,11 @@ import { Menu, Siren, Search, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { usePresentationMode, maskEmail } from '@/lib/presentation-mode';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { GlobalSearch } from '@/components/pae/GlobalSearch';
+import { GlobalSearch } from '@/components/common/GlobalSearch';
 import { AppSidebar } from './AppSidebar';
 import { PendencyAlertModal } from './PendencyAlertModal';
 import { useEmergencyDispatch } from './EmergencyDispatchProvider';
-import { headerLabelForPath, pathForView, situationRoomPath } from './nav-config';
+import { headerLabelForPath, pathForView, situationRoomPath } from '@/lib/nav-config';
 
 /**
  * Casca da aplicação (sidebar + header + banner de emergência + footer),

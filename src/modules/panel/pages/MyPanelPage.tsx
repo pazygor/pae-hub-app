@@ -30,7 +30,7 @@ const EPI_STATUS_CFG: Record<string, { label: string; color: string; bg: string 
   devolvido: { label: 'Devolvido', color: 'text-muted-foreground', bg: 'bg-secondary' },
 };
 
-export function MyPanelView() {
+export function MyPanelPage() {
   const { user, data, setData } = useAuth();
   const now = new Date();
   const [confirmedEPIs, setConfirmedEPIs] = useState<Set<string>>(new Set());

@@ -19,7 +19,7 @@ const RESTRICTABLE_MODULES: ModuleId[] = [
   'cop', 'dashboard', 'terminals', 'risks', 'plans', 'occurrences', 'map', 'documents', 'badge', 'about',
 ];
 
-export function AccessLevelsView() {
+export function AccessLevelsPage() {
   const { user, data, setData } = useAuth();
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 

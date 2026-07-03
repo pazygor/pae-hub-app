@@ -8,7 +8,7 @@ const OCCURRENCE_TYPES = [
   'Queda de carga', 'Acidente de trabalho', 'Contaminação ambiental', 'Outros',
 ];
 
-export function NotificationRulesView() {
+export function NotificationRulesPage() {
   const { user, data, setData } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ occurrenceType: '', entityId: '', mandatory: false });

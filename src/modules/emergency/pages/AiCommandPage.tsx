@@ -103,7 +103,7 @@ function analyzeSituation(input: string, occurrence: Occurrence | null, plans: a
   };
 }
 
-export function AICommandView() {
+export function AiCommandPage() {
   const { data } = useAuth();
   const [input, setInput] = useState('');
   const [selectedOccurrence, setSelectedOccurrence] = useState<string>('');

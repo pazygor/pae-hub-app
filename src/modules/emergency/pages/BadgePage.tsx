@@ -13,7 +13,7 @@ interface ContactCard {
   email: string;
 }
 
-export function BadgePAEView() {
+export function BadgePage() {
   const { user, data } = useAuth();
   const { presentationMode } = usePresentationMode();
   const [copiedId, setCopiedId] = useState<string | null>(null);

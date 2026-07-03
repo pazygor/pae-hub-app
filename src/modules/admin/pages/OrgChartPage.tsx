@@ -23,7 +23,7 @@ interface UserPendencies {
   total: number;
 }
 
-export function OrgChartView() {
+export function OrgChartPage() {
   const { user, data } = useAuth();
   const visibleTerminalIds = useMemo(() => getVisibleTerminalIds(user, data), [user, data]);
   const terminalLocked = isTerminalLocked(user);

@@ -32,7 +32,7 @@ const SUB_MODULE_ICONS: Record<SafetySubModule, React.ElementType> = {
   compliance: ClipboardCheck,
 };
 
-export function ModulesView() {
+export function ModulesPage() {
   const { user, data, setData } = useAuth();
 
   const [configs, setConfigs] = useState<Record<string, { modules: ProductModule[]; safetySubs: SafetySubModule[] }>>(() => {

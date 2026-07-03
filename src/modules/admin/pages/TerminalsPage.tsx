@@ -3,7 +3,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Terminal } from '@/lib/types';
 import { Plus, X } from 'lucide-react';
 
-export function TerminalsView() {
+export function TerminalsPage() {
   const { user, data, setData } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);

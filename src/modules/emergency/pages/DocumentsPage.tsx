@@ -23,7 +23,7 @@ const docTypeIcon = (t: DocumentType) => {
   }
 };
 
-export function DocumentsView() {
+export function DocumentsPage() {
   const { user, data, setData } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [filterType, setFilterType] = useState<string>('');

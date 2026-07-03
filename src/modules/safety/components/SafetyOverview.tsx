@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { StatCard } from './StatCard';
+import { StatCard } from '@/components/common/StatCard';
 import { GraduationCap, HardHat, AlertTriangle, Users, ClipboardCheck, Clock, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 

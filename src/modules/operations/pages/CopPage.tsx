@@ -1,16 +1,16 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import L from 'leaflet';
 import { useAuth } from '@/lib/auth-context';
 import { Terminal, TimelineEvent } from '@/lib/types';
 import { Ship, AlertTriangle, Siren, Clock, CheckCircle, Shield, User, Bell, Play, RefreshCw, MapPin, Radio } from 'lucide-react';
-import { StatCard } from './StatCard';
+import { StatCard } from '@/components/common/StatCard';
+import { situationRoomPath } from '@/lib/nav-config';
 import 'leaflet/dist/leaflet.css';
 
-interface COPViewProps {
-  onOpenSituationRoom?: (id: string) => void;
-}
-
-export function COPView({ onOpenSituationRoom }: COPViewProps) {
+export function CopPage() {
+  const navigate = useNavigate();
+  const openSituationRoom = (id: string) => navigate(situationRoomPath(id));
   const { user, data } = useAuth();
   const [selectedTerminal, setSelectedTerminal] = useState<Terminal | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -171,14 +171,12 @@ export function COPView({ onOpenSituationRoom }: COPViewProps) {
                   </div>
                   <p className="text-[10px] text-muted-foreground">{data.terminals.find(t => t.id === o.terminalId)?.name} · {formatDate(o.dateTime)}</p>
                 </div>
-                {onOpenSituationRoom && (
-                  <button
-                    onClick={() => onOpenSituationRoom(o.id)}
-                    className="px-3 py-2 text-[10px] font-bold bg-primary text-primary-foreground rounded-lg shadow-lg shadow-primary/30 animate-pulse hover:animate-none hover:opacity-90 transition-all flex items-center gap-1.5 shrink-0"
-                  >
-                    <Radio size={12} /> Abrir Sala de Situação
-                  </button>
-                )}
+                <button
+                  onClick={() => openSituationRoom(o.id)}
+                  className="px-3 py-2 text-[10px] font-bold bg-primary text-primary-foreground rounded-lg shadow-lg shadow-primary/30 animate-pulse hover:animate-none hover:opacity-90 transition-all flex items-center gap-1.5 shrink-0"
+                >
+                  <Radio size={12} /> Abrir Sala de Situação
+                </button>
               </div>
             ))}
           </div>

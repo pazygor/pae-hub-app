@@ -1,9 +1,9 @@
 import { useAuth } from '@/lib/auth-context';
-import { SafetyOverview } from './SafetyOverview';
+import { SafetyOverview } from '../components/SafetyOverview';
 import { ShieldCheck, Lock } from 'lucide-react';
 import { getDefaultModules, getDefaultSafetySubModules, ProductModule, SafetySubModule } from '@/lib/modules';
 
-export function OperationalSafetyView() {
+export function SafetyOverviewPage() {
   const { user, data } = useAuth();
 
   // Admin only

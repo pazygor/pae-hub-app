@@ -8,7 +8,7 @@ import {
   Video, Upload, ExternalLink, Paperclip, CheckSquare2
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
-import { AssignUsersModal } from './AssignUsersModal';
+import { AssignUsersModal } from '../components/AssignUsersModal';
 
 const COLORS = {
   valid: 'hsl(142, 71%, 45%)',
@@ -49,7 +49,7 @@ function statusBarColor(status: TrainingStatus) {
   }
 }
 
-export function TrainingsView() {
+export function TrainingsPage() {
   const { user, data, setData } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState<string | null>(null);

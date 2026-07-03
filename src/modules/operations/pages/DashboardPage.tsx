@@ -115,7 +115,7 @@ const CenterLabel = ({ viewBox, total }: any) => {
   );
 };
 
-export function DashboardView() {
+export function DashboardPage() {
   const { user, data } = useAuth();
 
   const visibleTerminalIds = useMemo(() => {

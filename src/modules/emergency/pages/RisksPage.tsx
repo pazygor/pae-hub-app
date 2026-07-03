@@ -3,7 +3,7 @@ import { useAuth } from '@/lib/auth-context';
 import { Risk, RiskLevel } from '@/lib/types';
 import { Plus, AlertTriangle, Trash2 } from 'lucide-react';
 
-export function RisksView() {
+export function RisksPage() {
   const { user, data, setData } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ type: '', description: '', level: 'médio' as RiskLevel, affectedArea: '' });

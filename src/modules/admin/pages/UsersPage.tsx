@@ -5,7 +5,7 @@ import { Plus, X } from 'lucide-react';
 import { usePresentationMode, maskEmail, maskName } from '@/lib/presentation-mode';
 import { getVisibleUsers, canManage } from '@/lib/access-control';
 
-export function UsersView() {
+export function UsersPage() {
   const { user, data, setData } = useAuth();
   const { presentationMode } = usePresentationMode();
   const [showForm, setShowForm] = useState(false);

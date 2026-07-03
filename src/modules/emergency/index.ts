@@ -1,0 +1,9 @@
+export { OccurrencesPage } from './pages/OccurrencesPage';
+export { SituationRoomPage } from './pages/SituationRoomPage';
+export { OrchestrationPage } from './pages/OrchestrationPage';
+export { AiCommandPage } from './pages/AiCommandPage';
+export { RisksPage } from './pages/RisksPage';
+export { PlansPage } from './pages/PlansPage';
+export { EmergencyMapPage } from './pages/EmergencyMapPage';
+export { DocumentsPage } from './pages/DocumentsPage';
+export { BadgePage } from './pages/BadgePage';

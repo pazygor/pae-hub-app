@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { usePresentationMode, maskName, maskEmail } from '@/lib/presentation-mode';
 import { isMenuItemAccessible, getPackageLabel } from '@/lib/modules';
 import { getAccessLevelMenuFilter, getUserActiveConfig } from '@/lib/access-control';
-import { NAV_CONFIG } from './nav-config';
+import { NAV_CONFIG } from '@/lib/nav-config';
 import m1Logo from '@/assets/m1-logo.png';
 
 interface Props {

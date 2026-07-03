@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { Occurrence, TimelineEvent, TimelineEventType, OccurrenceStatus } from '@/lib/types';
-import { generateIncidentPDF } from './generateIncidentPDF';
-import { OccurrenceChat } from './OccurrenceChat';
+import { generateIncidentPDF } from '../components/generateIncidentPDF';
+import { OccurrenceChat } from '../components/OccurrenceChat';
 import {
   ShieldAlert, Clock, AlertTriangle, User, CheckCircle, Circle,
   Play, RefreshCw, Bell, Paperclip, FileText, MapPin, Siren,
@@ -98,12 +99,12 @@ const DEFAULT_CHECKLIST: Omit<ChecklistItem, 'id'>[] = [
   { text: 'Ocorrência encerrada', done: false },
 ];
 
-interface Props {
-  occurrenceId: string;
-  onBack: () => void;
-}
-
-export function SituationRoomView({ occurrenceId, onBack }: Props) {
+export function SituationRoomPage() {
+  const { id: occurrenceId } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  // Volta no histórico quando possível; em deep-link direto, cai na lista.
+  const canGoBack = (window.history.state?.idx ?? 0) > 0;
+  const onBack = () => (canGoBack ? navigate(-1) : navigate('/ocorrencias'));
   const { user, data, setData } = useAuth();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -172,7 +173,8 @@ export function SituationRoomView({ occurrenceId, onBack }: Props) {
     return () => { map.remove(); mapInstanceRef.current = null; };
   }, [terminal, terminalElements, occurrence?.type]);
 
-  if (!occurrence || !user) return null;
+  // Ocorrência inexistente (ex.: deep-link inválido) → volta para a lista.
+  if (!occurrence || !user) return <Navigate to="/ocorrencias" replace />;
 
   const canAct = user.role === 'admin' || user.role === 'terminal';
 

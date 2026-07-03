@@ -5,7 +5,7 @@ import {
   CommandGroup, CommandItem, CommandSeparator,
 } from '@/components/ui/command';
 import { Ship, Siren } from 'lucide-react';
-import { NAV_CONFIG } from '@/app/layout/nav-config';
+import { NAV_CONFIG } from '@/lib/nav-config';
 
 // Itens de navegação derivados da fonte única (nav-config).
 const NAV_ITEMS = NAV_CONFIG;

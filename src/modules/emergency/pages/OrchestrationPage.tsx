@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
+import { situationRoomPath } from '@/lib/nav-config';
 import { Occurrence, EntityNotification, EntityNotificationStatus } from '@/lib/types';
 import {
   Activity, Clock, Shield, Users, CheckCircle, AlertTriangle, Siren,
   ChevronDown, ChevronRight, FileText, Timer, Radio, Eye
 } from 'lucide-react';
-import { generateIncidentPDF } from './generateIncidentPDF';
+import { generateIncidentPDF } from '../components/generateIncidentPDF';
 
 /* ── helpers ──────────────────────────────────────────────── */
 
@@ -37,11 +39,9 @@ const statusColor: Record<EntityNotificationStatus, string> = {
 
 const statusOrder: EntityNotificationStatus[] = ['Notificada', 'Confirmada', 'Em Atendimento'];
 
-interface Props {
-  onOpenSituationRoom?: (id: string) => void;
-}
-
-export function OrchestrationView({ onOpenSituationRoom }: Props) {
+export function OrchestrationPage() {
+  const navigate = useNavigate();
+  const openSituationRoom = (id: string) => navigate(situationRoomPath(id));
   const { user, data, setData } = useAuth();
   const [expandedOcc, setExpandedOcc] = useState<string | null>(null);
 
@@ -189,15 +189,13 @@ export function OrchestrationView({ onOpenSituationRoom }: Props) {
                 <div className="border-t border-border">
                   {/* Quick Actions */}
                   <div className="flex items-center gap-2 px-4 py-2 bg-secondary/20 border-b border-border">
-                    {onOpenSituationRoom && (
-                      <button
-                        onClick={() => onOpenSituationRoom(occ.id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold bg-primary text-primary-foreground rounded-lg hover:brightness-110 transition-all"
-                      >
-                        <Eye size={12} />
-                        Sala de Situação
-                      </button>
-                    )}
+                    <button
+                      onClick={() => openSituationRoom(occ.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold bg-primary text-primary-foreground rounded-lg hover:brightness-110 transition-all"
+                    >
+                      <Eye size={12} />
+                      Sala de Situação
+                    </button>
                     <button
                       onClick={() => handleGenerateReport(occ)}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold bg-secondary text-foreground rounded-lg hover:bg-secondary/80 transition-colors border border-border"

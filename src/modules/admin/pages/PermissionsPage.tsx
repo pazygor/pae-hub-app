@@ -1,7 +1,7 @@
 import { useAuth } from '@/lib/auth-context';
 import { AlertCircle } from 'lucide-react';
 
-export function PermissionsView() {
+export function PermissionsPage() {
   const { data, setData } = useAuth();
 
   const togglePermission = (entityId: string, terminalId: string) => {

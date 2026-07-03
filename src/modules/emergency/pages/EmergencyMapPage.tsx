@@ -16,7 +16,7 @@ const LAYER_CONFIG: Record<MapLayerType, { label: string; color: string; icon: t
 
 const ALL_LAYER_TYPES: MapLayerType[] = ['fire_equipment', 'hydrant', 'evacuation_route', 'risk_area', 'meeting_point'];
 
-export function EmergencyMapView() {
+export function EmergencyMapPage() {
   const { user, data, setData } = useAuth();
   const [selected, setSelected] = useState<Terminal | null>(null);
   const [activeLayers, setActiveLayers] = useState<Set<MapLayerType>>(new Set());

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Siren, X } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { Occurrence, SeverityLevel, EntityNotification } from '@/lib/types';
-import { situationRoomPath } from './nav-config';
+import { situationRoomPath } from '@/lib/nav-config';
 
 /**
  * Provider do fluxo de "Disparar Emergência" (lógica movida do PAESystem).
