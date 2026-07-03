@@ -4,19 +4,23 @@
 
 import { http, tokenStore } from './client';
 
-/** Usuário como o back-end (pae-api) o devolve. A tradução para o tipo do
- *  front (AppUser) acontece na camada de adapters (Fase 1). */
+/** Usuário como o back-end (pae-api) o devolve — contrato alinhado ao DER
+ *  (Fase 1 do guia de alinhamento). A tradução para o tipo do front (AppUser)
+ *  acontece em src/api/adapters.ts. */
 export interface ApiAuthUser {
   id: string;
   name: string;
   email: string;
-  role: string;
+  role: string; // 'admin' | 'terminal' | 'entity'
+  accessLevel: string | null; // 'estratégico' | 'tático' | 'operacional'
   status?: string;
-  terminalId: string | null;
+  linkId: string | null;
   terminalName?: string;
+  tacticalManagerId?: string | null;
   organizationId: string;
   organizationName?: string;
   avatarUrl: string | null;
+  allowedModules?: string[];
   permissions: string[];
 }
 

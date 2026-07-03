@@ -1,20 +1,34 @@
 import { useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
-import { AlertCircle } from 'lucide-react';
+import { ApiError } from '@/api';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import m1Logo from '@/assets/m1-logo.png';
 
+function loginErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 401) return 'Email ou senha inválidos.';
+    if (err.status === 429) return 'Muitas tentativas. Aguarde um instante e tente novamente.';
+    return err.message;
+  }
+  return 'Não foi possível conectar ao servidor. Verifique se a API está no ar.';
+}
+
 export function LoginPage() {
-  const { user, login } = useAuth();
+  const { user, isLoading, login } = useAuth();
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [showDemo, setShowDemo] = useState(false);
 
   useEffect(() => {
     document.title = 'Entrar · M1 PAE Hub';
   }, []);
+
+  // Sessão sendo reidratada (token salvo) — não mostra o formulário ainda.
+  if (isLoading) return null;
 
   // Já autenticado → volta para a rota de origem (returnTo) ou para o índice.
   if (user) {
@@ -22,15 +36,26 @@ export function LoginPage() {
     return <Navigate to={from || '/'} replace />;
   }
 
+  const doLogin = async (email: string, password: string) => {
+    setError('');
+    setSubmitting(true);
+    try {
+      await login(email, password);
+      // Redireciona via bloco `if (user)` acima na re-renderização.
+    } catch (err) {
+      setError(loginErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    const ok = login(email, password);
-    if (!ok) setError('Email ou senha inválidos.');
+    void doLogin(email, password);
   };
 
   const quickLogin = (email: string, password: string) => {
-    login(email, password);
+    void doLogin(email, password);
   };
 
   return (
@@ -75,9 +100,11 @@ export function LoginPage() {
           )}
           <button
             type="submit"
-            className="w-full h-[48px] bg-primary text-primary-foreground rounded-[8px] text-sm font-bold shadow-md hover:brightness-90 transition-all"
+            disabled={submitting}
+            className="w-full h-[48px] bg-primary text-primary-foreground rounded-[8px] text-sm font-bold shadow-md hover:brightness-90 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            Entrar
+            {submitting && <Loader2 size={16} className="animate-spin" />}
+            {submitting ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
 
@@ -96,13 +123,16 @@ export function LoginPage() {
             <div className="grid gap-2">
               {[
                 { label: 'Administrador', email: 'admin@paehub.com', pass: 'admin123' },
-                { label: 'Terminal', email: 'carlos@tecon.com', pass: 'terminal123' },
+                { label: 'Estratégico', email: 'diretor@tecon.com', pass: 'estrategico123' },
+                { label: 'Tático', email: 'carlos@tecon.com', pass: 'terminal123' },
+                { label: 'Operacional', email: 'pedro@tecon.com', pass: 'operacional123' },
                 { label: 'Entidade', email: 'bombeiro@gov.br', pass: 'entity123' },
               ].map(item => (
                 <button
                   key={item.email}
                   onClick={() => quickLogin(item.email, item.pass)}
-                  className="w-full py-2 px-4 border border-border rounded-lg text-sm font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors flex justify-between items-center"
+                  disabled={submitting}
+                  className="w-full py-2 px-4 border border-border rounded-lg text-sm font-semibold text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors flex justify-between items-center disabled:opacity-60"
                 >
                   <span>{item.label}</span>
                   <span className="text-[10px] text-muted-foreground font-mono-data">{item.email}</span>
