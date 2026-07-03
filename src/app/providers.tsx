@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/lib/auth-context';
 import { PresentationModeProvider } from '@/lib/presentation-mode';
+import { ViewModeProvider } from '@/app/layout/ViewModeProvider';
 
 const queryClient = new QueryClient();
 
@@ -15,9 +16,11 @@ export function AppProviders({ children }: { children: ReactNode }) {
       <TooltipProvider>
         <AuthProvider>
           <PresentationModeProvider>
-            <Toaster />
-            <Sonner />
-            {children}
+            <ViewModeProvider>
+              <Toaster />
+              <Sonner />
+              {children}
+            </ViewModeProvider>
           </PresentationModeProvider>
         </AuthProvider>
       </TooltipProvider>

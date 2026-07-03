@@ -8,8 +8,10 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { GlobalSearch } from '@/components/common/GlobalSearch';
 import { PageLoader } from '@/components/common/PageLoader';
 import { AppSidebar } from './AppSidebar';
+import { MobileShell } from './MobileShell';
 import { PendencyAlertModal } from './PendencyAlertModal';
 import { useEmergencyDispatch } from './EmergencyDispatchProvider';
+import { useViewMode } from './ViewModeProvider';
 import { headerLabelForPath, pathForView, situationRoomPath } from '@/lib/nav-config';
 
 /**
@@ -20,6 +22,7 @@ export function AppShell() {
   const { user, data } = useAuth();
   const { presentationMode, togglePresentationMode } = usePresentationMode();
   const { openDispatch } = useEmergencyDispatch();
+  const { fullSystem, exitFullSystem } = useViewMode();
   const isMobile = useIsMobile();
   const location = useLocation();
   const navigate = useNavigate();
@@ -46,6 +49,10 @@ export function AppShell() {
   }, []);
 
   if (!user) return null;
+
+  // Fase 1.D: em telas <780px, sem escolha explícita de "Sistema Completo",
+  // as telas mantêm a experiência mobile (chrome leve, sem sidebar).
+  if (isMobile && !fullSystem) return <MobileShell />;
 
   const canDispatchEmergency = user.role === 'admin' || user.role === 'terminal';
   const roleLabel = user.role === 'admin' ? 'ADMIN' : user.role === 'terminal' ? 'TERMINAL' : 'ENTIDADE';
@@ -83,7 +90,7 @@ export function AppShell() {
           <div className="flex items-center gap-3">
             {isMobile && (
               <button
-                onClick={() => navigate('/')}
+                onClick={() => { exitFullSystem(); navigate('/'); }}
                 className="p-1.5 rounded-md text-primary hover:bg-primary/10 transition-colors text-[11px] font-bold"
               >
                 ← Painel

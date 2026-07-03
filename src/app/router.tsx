@@ -1,4 +1,4 @@
-import { lazy } from 'react';
+import { lazy, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -7,6 +7,7 @@ import { RequireAuth } from './guards/RequireAuth';
 import { RequireAccess } from './guards/RequireAccess';
 import { AppShell } from './layout/AppShell';
 import { EmergencyDispatchProvider, useEmergencyDispatch } from './layout/EmergencyDispatchProvider';
+import { useViewMode } from './layout/ViewModeProvider';
 
 // Eager: entrada da aplicação e painel de emergência mobile (precisam ser instantâneos)
 import { MobileActionPanel } from '@/components/common/MobileActionPanel';
@@ -50,6 +51,13 @@ function IndexGate() {
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const { openDispatch } = useEmergencyDispatch();
+  const { enterFullSystem, exitFullSystem } = useViewMode();
+
+  // Fase 1.D: chegar ao painel = estar na experiência mobile (reseta a escolha
+  // anterior de "Sistema Completo").
+  useEffect(() => {
+    if (isMobile) exitFullSystem();
+  }, [isMobile, exitFullSystem]);
 
   if (isMobile) {
     return (
@@ -57,7 +65,10 @@ function IndexGate() {
         onDispatchEmergency={openDispatch}
         onOpenSituationRoom={(id) => navigate(situationRoomPath(id))}
         onNavigate={(viewId) => navigate(pathForView(viewId))}
-        onOpenFullSystem={() => navigate(defaultPathForUser(user))}
+        onOpenFullSystem={() => {
+          enterFullSystem();
+          navigate(defaultPathForUser(user));
+        }}
       />
     );
   }
