@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { AlertCircle } from 'lucide-react';
@@ -11,6 +11,10 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [showDemo, setShowDemo] = useState(false);
+
+  useEffect(() => {
+    document.title = 'Entrar · M1 PAE Hub';
+  }, []);
 
   // Já autenticado → volta para a rota de origem (returnTo) ou para o índice.
   if (user) {

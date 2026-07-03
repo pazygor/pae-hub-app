@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -7,20 +8,38 @@ import { RequireAccess } from './guards/RequireAccess';
 import { AppShell } from './layout/AppShell';
 import { EmergencyDispatchProvider, useEmergencyDispatch } from './layout/EmergencyDispatchProvider';
 
+// Eager: entrada da aplicação e painel de emergência mobile (precisam ser instantâneos)
 import { MobileActionPanel } from '@/components/common/MobileActionPanel';
+import { NotFoundPage } from '@/components/common/NotFoundPage';
 import { LoginPage } from '@/modules/auth';
-import { MyPanelPage } from '@/modules/panel';
-import { CopPage, DashboardPage } from '@/modules/operations';
-import {
-  OccurrencesPage, SituationRoomPage, OrchestrationPage, AiCommandPage,
-  RisksPage, PlansPage, EmergencyMapPage, DocumentsPage, BadgePage,
-} from '@/modules/emergency';
-import { SafetyOverviewPage, TrainingsPage, EpisPage, CompliancePage } from '@/modules/safety';
-import {
-  TerminalsPage, EntitiesPage, UsersPage, PermissionsPage, AccessLevelsPage,
-  NotificationRulesPage, ModulesPage, OrgChartPage, AboutPage,
-} from '@/modules/admin';
-import NotFound from '@/pages/NotFound';
+
+// Lazy: páginas do shell (code-splitting por rota — recharts/leaflet/jspdf só
+// são baixados quando a tela que os usa é visitada)
+const MyPanelPage = lazy(() => import('@/modules/panel/pages/MyPanelPage').then(m => ({ default: m.MyPanelPage })));
+const CopPage = lazy(() => import('@/modules/operations/pages/CopPage').then(m => ({ default: m.CopPage })));
+const DashboardPage = lazy(() => import('@/modules/operations/pages/DashboardPage').then(m => ({ default: m.DashboardPage })));
+const OccurrencesPage = lazy(() => import('@/modules/emergency/pages/OccurrencesPage').then(m => ({ default: m.OccurrencesPage })));
+const SituationRoomPage = lazy(() => import('@/modules/emergency/pages/SituationRoomPage').then(m => ({ default: m.SituationRoomPage })));
+const OrchestrationPage = lazy(() => import('@/modules/emergency/pages/OrchestrationPage').then(m => ({ default: m.OrchestrationPage })));
+const AiCommandPage = lazy(() => import('@/modules/emergency/pages/AiCommandPage').then(m => ({ default: m.AiCommandPage })));
+const RisksPage = lazy(() => import('@/modules/emergency/pages/RisksPage').then(m => ({ default: m.RisksPage })));
+const PlansPage = lazy(() => import('@/modules/emergency/pages/PlansPage').then(m => ({ default: m.PlansPage })));
+const EmergencyMapPage = lazy(() => import('@/modules/emergency/pages/EmergencyMapPage').then(m => ({ default: m.EmergencyMapPage })));
+const DocumentsPage = lazy(() => import('@/modules/emergency/pages/DocumentsPage').then(m => ({ default: m.DocumentsPage })));
+const BadgePage = lazy(() => import('@/modules/emergency/pages/BadgePage').then(m => ({ default: m.BadgePage })));
+const SafetyOverviewPage = lazy(() => import('@/modules/safety/pages/SafetyOverviewPage').then(m => ({ default: m.SafetyOverviewPage })));
+const TrainingsPage = lazy(() => import('@/modules/safety/pages/TrainingsPage').then(m => ({ default: m.TrainingsPage })));
+const EpisPage = lazy(() => import('@/modules/safety/pages/EpisPage').then(m => ({ default: m.EpisPage })));
+const CompliancePage = lazy(() => import('@/modules/safety/pages/CompliancePage').then(m => ({ default: m.CompliancePage })));
+const TerminalsPage = lazy(() => import('@/modules/admin/pages/TerminalsPage').then(m => ({ default: m.TerminalsPage })));
+const EntitiesPage = lazy(() => import('@/modules/admin/pages/EntitiesPage').then(m => ({ default: m.EntitiesPage })));
+const UsersPage = lazy(() => import('@/modules/admin/pages/UsersPage').then(m => ({ default: m.UsersPage })));
+const PermissionsPage = lazy(() => import('@/modules/admin/pages/PermissionsPage').then(m => ({ default: m.PermissionsPage })));
+const AccessLevelsPage = lazy(() => import('@/modules/admin/pages/AccessLevelsPage').then(m => ({ default: m.AccessLevelsPage })));
+const NotificationRulesPage = lazy(() => import('@/modules/admin/pages/NotificationRulesPage').then(m => ({ default: m.NotificationRulesPage })));
+const ModulesPage = lazy(() => import('@/modules/admin/pages/ModulesPage').then(m => ({ default: m.ModulesPage })));
+const OrgChartPage = lazy(() => import('@/modules/admin/pages/OrgChartPage').then(m => ({ default: m.OrgChartPage })));
+const AboutPage = lazy(() => import('@/modules/admin/pages/AboutPage').then(m => ({ default: m.AboutPage })));
 
 /**
  * Rota index "/": no mobile exibe o painel de ações (tela cheia, sem shell);
@@ -52,7 +71,7 @@ export function AppRouter() {
         {/* Pública */}
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Autenticadas */}
+        {/* Autenticadas — URL desconhecida sem sessão cai no /login (RequireAuth) */}
         <Route element={<RequireAuth />}>
           <Route element={<EmergencyDispatchProvider />}>
             {/* Index: painel mobile (tela cheia) ou redirect por perfil */}
@@ -92,13 +111,13 @@ export function AppRouter() {
                 <Route path="/pacotes-do-sistema" element={<ModulesPage />} />
                 <Route path="/organograma" element={<OrgChartPage />} />
                 <Route path="/sobre" element={<AboutPage />} />
+
+                {/* 404 interno do shell (rota autenticada desconhecida) */}
+                <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Route>
           </Route>
         </Route>
-
-        {/* 404 */}
-        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   );

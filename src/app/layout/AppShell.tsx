@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, Siren, Search, Eye, EyeOff } from 'lucide-react';
@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { usePresentationMode, maskEmail } from '@/lib/presentation-mode';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { GlobalSearch } from '@/components/common/GlobalSearch';
+import { PageLoader } from '@/components/common/PageLoader';
 import { AppSidebar } from './AppSidebar';
 import { PendencyAlertModal } from './PendencyAlertModal';
 import { useEmergencyDispatch } from './EmergencyDispatchProvider';
@@ -25,6 +26,12 @@ export function AppShell() {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+
+  // Título da aba por rota (fonte: nav-config)
+  useEffect(() => {
+    const label = headerLabelForPath(location.pathname);
+    document.title = label ? `${label} · M1 PAE Hub` : 'M1 PAE Hub — Gestão de Emergência';
+  }, [location.pathname]);
 
   // Atalho Ctrl+K / Cmd+K
   useEffect(() => {
@@ -141,7 +148,9 @@ export function AppShell() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
             >
-              <Outlet />
+              <Suspense fallback={<PageLoader />}>
+                <Outlet />
+              </Suspense>
             </motion.div>
           </AnimatePresence>
         </section>
