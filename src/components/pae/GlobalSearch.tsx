@@ -4,29 +4,11 @@ import {
   CommandDialog, CommandInput, CommandList, CommandEmpty,
   CommandGroup, CommandItem, CommandSeparator,
 } from '@/components/ui/command';
-import {
-  LayoutDashboard, Ship, Shield, Users, Lock, AlertTriangle, FileText,
-  Siren, MapPin, Radio, FolderOpen, Info, IdCard, ShieldCheck, Bell, Search, Network,
-} from 'lucide-react';
+import { Ship, Siren } from 'lucide-react';
+import { NAV_CONFIG } from '@/app/layout/nav-config';
 
-const NAV_ITEMS = [
-  { id: 'cop', label: 'Centro de Operações', icon: Radio },
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'terminals', label: 'Terminais', icon: Ship },
-  { id: 'entities', label: 'Entidades', icon: Shield },
-  { id: 'users', label: 'Usuários', icon: Users },
-  { id: 'permissions', label: 'Permissões', icon: Lock },
-  { id: 'access-levels', label: 'Níveis de Acesso', icon: ShieldCheck },
-  { id: 'notification-rules', label: 'Acionamento Entidades', icon: Bell },
-  { id: 'risks', label: 'Riscos', icon: AlertTriangle },
-  { id: 'plans', label: 'Planos de Ação', icon: FileText },
-  { id: 'occurrences', label: 'Ocorrências', icon: Siren },
-  { id: 'map', label: 'Mapa de Emergência', icon: MapPin },
-  { id: 'documents', label: 'Documentos', icon: FolderOpen },
-  { id: 'badge', label: 'Crachá do PAE', icon: IdCard },
-  { id: 'org-chart', label: 'Organograma', icon: Network },
-  { id: 'about', label: 'Sobre o Sistema', icon: Info },
-];
+// Itens de navegação derivados da fonte única (nav-config).
+const NAV_ITEMS = NAV_CONFIG;
 
 interface Props {
   open: boolean;
