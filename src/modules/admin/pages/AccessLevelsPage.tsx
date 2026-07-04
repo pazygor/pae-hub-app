@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { AppUser, AccessLevel, ALL_MODULES, MODULE_LABELS, ModuleId } from '@/lib/types';
-import { ShieldCheck, User, ChevronDown, ChevronUp, Check, X, Ship, Siren } from 'lucide-react';
+import { ShieldCheck, User, ChevronDown, ChevronUp, Check, X, Ship, Siren, Loader2 } from 'lucide-react';
+import { useUsers, useTerminals, useUserMutations, UserInput } from '@/api';
 
 const ACCESS_LEVELS: { value: AccessLevel; label: string; description: string; color: string }[] = [
   { value: 'estratégico', label: 'Estratégico', description: 'Visão geral, indicadores e relatórios', color: 'bg-primary/10 text-primary border-primary/20' },
@@ -20,22 +22,24 @@ const RESTRICTABLE_MODULES: ModuleId[] = [
 ];
 
 export function AccessLevelsPage() {
-  const { user, data, setData } = useAuth();
+  const { user, data } = useAuth();
+  const { data: users = [], isLoading } = useUsers();
+  const { data: terminals = [] } = useTerminals();
+  const { update } = useUserMutations();
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   if (!user || user.role !== 'admin') return null;
 
-  const nonAdminUsers = data.users.filter(u => u.role !== 'admin');
+  const nonAdminUsers = users.filter(u => u.role !== 'admin');
 
-  const updateUser = (userId: string, updates: Partial<AppUser>) => {
-    setData(d => ({
-      ...d,
-      users: d.users.map(u => u.id === userId ? { ...u, ...updates } : u),
-    }));
+  const updateUser = (userId: string, input: UserInput) => {
+    update.mutate({ id: userId, input }, {
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao salvar acesso'),
+    });
   };
 
   const toggleModule = (userId: string, moduleId: string) => {
-    const usr = data.users.find(u => u.id === userId);
+    const usr = users.find(u => u.id === userId);
     if (!usr) return;
     const current = usr.allowedModules || RESTRICTABLE_MODULES.map(String);
     const updated = current.includes(moduleId)
@@ -45,9 +49,9 @@ export function AccessLevelsPage() {
   };
 
   const toggleTerminal = (userId: string, terminalId: string) => {
-    const usr = data.users.find(u => u.id === userId);
+    const usr = users.find(u => u.id === userId);
     if (!usr) return;
-    const current = usr.allowedTerminals || data.terminals.map(t => t.id);
+    const current = usr.allowedTerminals || terminals.map(t => t.id);
     const updated = current.includes(terminalId)
       ? current.filter(t => t !== terminalId)
       : [...current, terminalId];
@@ -55,7 +59,7 @@ export function AccessLevelsPage() {
   };
 
   const toggleOccurrenceType = (userId: string, type: string) => {
-    const usr = data.users.find(u => u.id === userId);
+    const usr = users.find(u => u.id === userId);
     if (!usr) return;
     const current = usr.allowedOccurrenceTypes || OCCURRENCE_TYPES;
     const updated = current.includes(type)
@@ -65,7 +69,7 @@ export function AccessLevelsPage() {
   };
 
   const getLinkName = (u: AppUser) => {
-    if (u.role === 'terminal') return data.terminals.find(t => t.id === u.linkId)?.name || '—';
+    if (u.role === 'terminal') return terminals.find(t => t.id === u.linkId)?.name || '—';
     if (u.role === 'entity') return data.entities.find(e => e.id === u.linkId)?.name || '—';
     return '—';
   };
@@ -109,14 +113,17 @@ export function AccessLevelsPage() {
 
       {/* User list */}
       <div className="space-y-3">
-        {nonAdminUsers.length === 0 && (
+        {isLoading && (
+          <p className="text-sm text-muted-foreground bg-card border border-border rounded-xl p-4 flex items-center gap-2"><Loader2 size={16} className="animate-spin" />Carregando usuários...</p>
+        )}
+        {!isLoading && nonAdminUsers.length === 0 && (
           <p className="text-sm text-muted-foreground italic bg-card border border-border rounded-xl p-4">Nenhum usuário não-administrador cadastrado.</p>
         )}
 
         {nonAdminUsers.map(u => {
           const isExpanded = expandedUserId === u.id;
           const userModules = u.allowedModules || RESTRICTABLE_MODULES.map(String);
-          const userTerminals = u.allowedTerminals || data.terminals.map(t => t.id);
+          const userTerminals = u.allowedTerminals || terminals.map(t => t.id);
           const userOccTypes = u.allowedOccurrenceTypes || OCCURRENCE_TYPES;
 
           return (
@@ -179,11 +186,11 @@ export function AccessLevelsPage() {
                       <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Gestor Tático</label>
                       <select
                         value={u.tacticalManagerId || ''}
-                        onChange={e => updateUser(u.id, { tacticalManagerId: e.target.value || undefined })}
+                        onChange={e => updateUser(u.id, { tacticalManagerId: e.target.value || null })}
                         className="w-full px-3 py-2 rounded-lg text-sm bg-background border border-input text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                       >
                         <option value="">Nenhum</option>
-                        {data.users.filter(tu => tu.accessLevel === 'tático').map(tu => (
+                        {users.filter(tu => tu.accessLevel === 'tático').map(tu => (
                           <option key={tu.id} value={tu.id}>{tu.name}</option>
                         ))}
                       </select>
@@ -220,10 +227,10 @@ export function AccessLevelsPage() {
                   {/* Terminal Restrictions */}
                   <div>
                     <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
-                      Terminais Visíveis ({userTerminals.length}/{data.terminals.length})
+                      Terminais Visíveis ({userTerminals.length}/{terminals.length})
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-                      {data.terminals.map(terminal => {
+                      {terminals.map(terminal => {
                         const isAllowed = userTerminals.includes(terminal.id);
                         return (
                           <button

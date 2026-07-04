@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { AppUser, AccessLevel } from '@/lib/types';
-import { getVisibleUsers, getVisibleTerminalIds, isTerminalLocked } from '@/lib/access-control';
+import { getVisibleUsers, isTerminalLocked } from '@/lib/access-control';
+import { useUsers, useTerminals } from '@/api';
 import {
   Network, User, ChevronDown, ChevronUp, Filter, AlertTriangle,
   GraduationCap, HardHat, ClipboardCheck, X, LinkIcon, Shield
@@ -25,7 +26,9 @@ interface UserPendencies {
 
 export function OrgChartPage() {
   const { user, data } = useAuth();
-  const visibleTerminalIds = useMemo(() => getVisibleTerminalIds(user, data), [user, data]);
+  const { data: users = [] } = useUsers();
+  const { data: terminals = [] } = useTerminals();
+  const visibleTerminalIds = useMemo(() => terminals.map(t => t.id), [terminals]);
   const terminalLocked = isTerminalLocked(user);
   const [filterTerminal, setFilterTerminal] = useState<string>('all');
   const effectiveTerminalFilter = terminalLocked && visibleTerminalIds.length === 1 ? visibleTerminalIds[0] : filterTerminal;
@@ -33,8 +36,8 @@ export function OrgChartPage() {
 
   const now = new Date();
 
-  // Get visible users based on hierarchy
-  const allVisibleUsers = getVisibleUsers(user, data.users);
+  // Get visible users based on hierarchy (admin → todos), agora da API
+  const allVisibleUsers = getVisibleUsers(user, users);
 
   // Filter by terminal
   const filteredUsers = useMemo(() => {
@@ -81,7 +84,7 @@ export function OrgChartPage() {
     .filter(o => !linkedOperacionalIds.has(o.id))
     .map(o => ({ user: o, pendencies: getPendencies(o) }));
 
-  const getTerminalName = (u: AppUser) => data.terminals.find(t => t.id === u.linkId)?.name || '—';
+  const getTerminalName = (u: AppUser) => terminals.find(t => t.id === u.linkId)?.name || '—';
 
   // Detail panel for expanded user
   const renderUserDetail = (u: AppUser) => {
@@ -310,7 +313,7 @@ export function OrgChartPage() {
             className="w-full md:w-64 px-3 py-2 text-xs bg-secondary/50 border rounded-lg text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
           >
             <option value="all">Todos os terminais</option>
-            {data.terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </div>
       )}

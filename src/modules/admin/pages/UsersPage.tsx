@@ -1,62 +1,78 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { AppUser, UserRole, AccessLevel } from '@/lib/types';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Loader2 } from 'lucide-react';
 import { usePresentationMode, maskEmail, maskName } from '@/lib/presentation-mode';
 import { getVisibleUsers, canManage } from '@/lib/access-control';
+import { useUsers, useTerminals, useUserMutations, UserInput } from '@/api';
 
 export function UsersPage() {
-  const { user, data, setData } = useAuth();
+  const { user, data } = useAuth();
   const { presentationMode } = usePresentationMode();
+  const { data: users = [], isLoading, isError } = useUsers();
+  const { data: terminals = [] } = useTerminals();
+  const { create, update, setStatus } = useUserMutations();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'terminal' as UserRole, linkId: '', accessLevel: '' as AccessLevel | '', tacticalManagerId: '' });
+  const saving = create.isPending || update.isPending;
 
   const openNew = () => { setForm({ name: '', email: '', password: '', role: 'terminal', linkId: '', accessLevel: '', tacticalManagerId: '' }); setEditId(null); setShowForm(true); };
-  const openEdit = (u: AppUser) => { setForm({ name: u.name, email: u.email, password: u.password, role: u.role, linkId: u.linkId || '', accessLevel: u.accessLevel || '', tacticalManagerId: u.tacticalManagerId || '' }); setEditId(u.id); setShowForm(true); };
+  const openEdit = (u: AppUser) => { setForm({ name: u.name, email: u.email, password: '', role: u.role, linkId: u.linkId || '', accessLevel: u.accessLevel || '', tacticalManagerId: u.tacticalManagerId || '' }); setEditId(u.id); setShowForm(true); };
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
-    const userData = {
-      ...form,
-      linkId: form.linkId || null,
-      accessLevel: (form.accessLevel || undefined) as AccessLevel | undefined,
-      tacticalManagerId: form.tacticalManagerId || undefined,
+    // Vínculo com terminal só se aplica ao papel 'terminal' (entidades → Fase 4b/5c).
+    const input: UserInput = {
+      name: form.name,
+      role: form.role,
+      accessLevel: form.accessLevel || null,
+      terminalId: form.role === 'terminal' ? (form.linkId || undefined) : undefined,
+      tacticalManagerId: form.tacticalManagerId || null,
     };
+    if (form.password) input.password = form.password;
+    const onSuccess = () => { setShowForm(false); toast.success(editId ? 'Usuário atualizado' : 'Usuário cadastrado'); };
+    const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha ao salvar usuário');
     if (editId) {
-      setData(d => ({ ...d, users: d.users.map(u => u.id === editId ? { ...u, ...userData } : u) }));
+      update.mutate({ id: editId, input }, { onSuccess, onError });
     } else {
-      setData(d => ({ ...d, users: [...d.users, { id: `u${Date.now()}`, ...userData }] }));
+      create.mutate({ ...input, email: form.email, password: form.password }, { onSuccess, onError });
     }
-    setShowForm(false);
   };
 
-  const remove = (id: string) => setData(d => ({ ...d, users: d.users.filter(u => u.id !== id) }));
+  const inativar = (id: string) => {
+    if (!confirm('Inativar este usuário? Ele perde o acesso ao sistema.')) return;
+    setStatus.mutate({ id, status: 'INACTIVE' }, {
+      onSuccess: () => toast.success('Usuário inativado'),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao inativar'),
+    });
+  };
 
   const getLinkName = (u: AppUser) => {
-    if (u.role === 'terminal') return data.terminals.find(t => t.id === u.linkId)?.name || '—';
+    if (u.role === 'terminal') return terminals.find(t => t.id === u.linkId)?.name || '—';
     if (u.role === 'entity') return data.entities.find(e => e.id === u.linkId)?.name || '—';
     return '—';
   };
 
   const getTacticalManagerName = (u: AppUser) => {
     if (!u.tacticalManagerId) return '—';
-    return data.users.find(m => m.id === u.tacticalManagerId)?.name || '—';
+    return users.find(m => m.id === u.tacticalManagerId)?.name || '—';
   };
 
   const roleLabel = (r: UserRole) => r === 'admin' ? 'Administrador' : r === 'terminal' ? 'Terminal' : 'Entidade';
   const accessLabel = (l?: AccessLevel) => l === 'estratégico' ? 'Estratégico' : l === 'operacional' ? 'Operacional' : l === 'tático' ? 'Tático' : '—';
 
-  const linkOptions = form.role === 'terminal' ? data.terminals : form.role === 'entity' ? data.entities : [];
+  const linkOptions = form.role === 'terminal' ? terminals : form.role === 'entity' ? data.entities : [];
 
   // Tático users available as managers
-  const tacticalUsers = data.users.filter(u => u.accessLevel === 'tático');
+  const tacticalUsers = users.filter(u => u.accessLevel === 'tático');
 
   const pm = presentationMode;
   const userCanManage = canManage(user);
 
-  // Hierarchy-based visibility
-  const visibleUsers = getVisibleUsers(user, data.users);
+  // Hierarchy-based visibility (admin → todos)
+  const visibleUsers = getVisibleUsers(user, users);
 
   return (
     <div className="space-y-4">
@@ -110,8 +126,8 @@ export function UsersPage() {
               <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} required className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Senha</label>
-              <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Senha {editId && <span className="normal-case text-muted-foreground/70">(deixe em branco p/ manter)</span>}</label>
+              <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required={!editId} minLength={8} placeholder={editId ? '••••••••' : 'mín. 8 caracteres'} className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Perfil</label>
@@ -151,7 +167,8 @@ export function UsersPage() {
               </div>
             )}
             <div className="flex items-end">
-              <button type="submit" className="w-full py-2 bg-accent text-accent-foreground rounded-md text-sm font-bold hover:opacity-90 transition-opacity">
+              <button type="submit" disabled={saving} className="w-full py-2 bg-accent text-accent-foreground rounded-md text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-2">
+                {saving && <Loader2 size={14} className="animate-spin" />}
                 {editId ? 'Salvar Alterações' : 'Cadastrar Usuário'}
               </button>
             </div>
@@ -174,7 +191,13 @@ export function UsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {visibleUsers.map(u => (
+              {isLoading && (
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground"><Loader2 size={16} className="animate-spin inline mr-2" />Carregando usuários...</td></tr>
+              )}
+              {isError && !isLoading && (
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-primary">Falha ao carregar usuários da API.</td></tr>
+              )}
+              {!isLoading && !isError && visibleUsers.map(u => (
                 <tr key={u.id} className="hover:bg-secondary/50 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{pm ? maskName(u.name) : u.name}</td>
                   <td className="px-4 py-3 text-muted-foreground font-mono-data text-xs">{pm ? maskEmail(u.email) : u.email}</td>
@@ -198,7 +221,9 @@ export function UsersPage() {
                   {userCanManage && (
                     <td className="px-4 py-3 text-right space-x-2">
                       <button onClick={() => openEdit(u)} className="text-accent font-bold text-xs hover:underline">Editar</button>
-                      <button onClick={() => remove(u.id)} className="text-emergency font-bold text-xs hover:underline">Excluir</button>
+                      {u.role !== 'admin' && (
+                        <button onClick={() => inativar(u.id)} className="text-emergency font-bold text-xs hover:underline">Inativar</button>
+                      )}
                     </td>
                   )}
                 </tr>

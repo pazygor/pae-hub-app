@@ -1,25 +1,22 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { Terminal } from '@/lib/types';
-import { Plus, X } from 'lucide-react';
+import { useTerminals, useTerminalMutations } from '@/api';
+import { Plus, X, Loader2 } from 'lucide-react';
 
 export function TerminalsPage() {
-  const { user, data, setData } = useAuth();
+  const { user } = useAuth();
+  const { data: terminals = [], isLoading, isError } = useTerminals();
+  const { create, update, remove: removeMut } = useTerminalMutations();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<Omit<Terminal, 'id'>>({ name: '', responsible: '', contact: '', location: '', lat: 0, lng: 0, status: 'Ativo' });
 
-  const visibleTerminals = useMemo(() => {
-    if (user?.role === 'admin') return data.terminals;
-    if (user?.role === 'terminal') return data.terminals.filter(t => t.id === user.linkId);
-    if (user?.role === 'entity') {
-      const allowed = data.permissions.find(p => p.entityId === user.linkId)?.terminalIds || [];
-      return data.terminals.filter(t => allowed.includes(t.id));
-    }
-    return [];
-  }, [user, data]);
-
+  // A API já devolve os terminais no escopo do papel (admin: todos).
+  const visibleTerminals = terminals;
   const isAdmin = user?.role === 'admin';
+  const saving = create.isPending || update.isPending;
 
   const openNew = () => {
     setForm({ name: '', responsible: '', contact: '', location: '', lat: 0, lng: 0, status: 'Ativo' });
@@ -35,21 +32,18 @@ export function TerminalsPage() {
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
-    if (editId) {
-      setData(d => ({ ...d, terminals: d.terminals.map(t => t.id === editId ? { ...t, ...form } : t) }));
-    } else {
-      const newTerminal: Terminal = { id: `t${Date.now()}`, ...form };
-      setData(d => ({ ...d, terminals: [...d.terminals, newTerminal] }));
-    }
-    setShowForm(false);
+    const onSuccess = () => { setShowForm(false); toast.success(editId ? 'Terminal atualizado' : 'Terminal cadastrado'); };
+    const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha ao salvar terminal');
+    if (editId) update.mutate({ id: editId, form }, { onSuccess, onError });
+    else create.mutate(form, { onSuccess, onError });
   };
 
   const remove = (id: string) => {
-    setData(d => ({
-      ...d,
-      terminals: d.terminals.filter(t => t.id !== id),
-      permissions: d.permissions.map(p => ({ ...p, terminalIds: p.terminalIds.filter(tid => tid !== id) })),
-    }));
+    if (!confirm('Inativar este terminal?')) return;
+    removeMut.mutate(id, {
+      onSuccess: () => toast.success('Terminal inativado'),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao inativar'),
+    });
   };
 
   return (
@@ -103,7 +97,8 @@ export function TerminalsPage() {
               </select>
             </div>
             <div className="flex items-end">
-              <button type="submit" className="w-full py-2 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:opacity-90 transition-opacity">
+              <button type="submit" disabled={saving} className="w-full py-2 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-2">
+                {saving && <Loader2 size={14} className="animate-spin" />}
                 {editId ? 'Salvar Alterações' : 'Cadastrar Terminal'}
               </button>
             </div>
@@ -125,7 +120,13 @@ export function TerminalsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {visibleTerminals.map(t => (
+              {isLoading && (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground"><Loader2 size={16} className="animate-spin inline mr-2" />Carregando terminais...</td></tr>
+              )}
+              {isError && !isLoading && (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-primary">Falha ao carregar terminais da API.</td></tr>
+              )}
+              {!isLoading && !isError && visibleTerminals.map(t => (
                 <tr key={t.id} className="hover:bg-secondary/50 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{t.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{t.responsible}</td>
@@ -144,7 +145,7 @@ export function TerminalsPage() {
                   )}
                 </tr>
               ))}
-              {visibleTerminals.length === 0 && (
+              {!isLoading && !isError && visibleTerminals.length === 0 && (
                 <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">Nenhum terminal encontrado.</td></tr>
               )}
             </tbody>
