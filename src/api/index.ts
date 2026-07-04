@@ -5,4 +5,7 @@ export * from './auth';
 export * from './adapters';
 export * from './terminals';
 export * from './users';
+export * from './entities';
+export * from './permissions';
+export * from './notification-rules';
 export * from './hooks';

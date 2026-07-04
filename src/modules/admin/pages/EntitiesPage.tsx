@@ -1,35 +1,36 @@
 import { useState } from 'react';
-import { useAuth } from '@/lib/auth-context';
+import { toast } from 'sonner';
 import { Entity } from '@/lib/types';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Loader2 } from 'lucide-react';
 import { usePresentationMode, maskContact } from '@/lib/presentation-mode';
+import { useEntities, useEntityMutations } from '@/api';
 
 export function EntitiesPage() {
-  const { data, setData } = useAuth();
   const { presentationMode } = usePresentationMode();
+  const { data: entities = [], isLoading, isError } = useEntities();
+  const { create, update, remove: removeMut } = useEntityMutations();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<Omit<Entity, 'id'>>({ name: '', type: '', contact: '', status: 'Ativo' });
+  const saving = create.isPending || update.isPending;
 
   const openNew = () => { setForm({ name: '', type: '', contact: '', status: 'Ativo' }); setEditId(null); setShowForm(true); };
   const openEdit = (e: Entity) => { setForm({ name: e.name, type: e.type, contact: e.contact, status: e.status }); setEditId(e.id); setShowForm(true); };
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
-    if (editId) {
-      setData(d => ({ ...d, entities: d.entities.map(ent => ent.id === editId ? { ...ent, ...form } : ent) }));
-    } else {
-      setData(d => ({ ...d, entities: [...d.entities, { id: `e${Date.now()}`, ...form }] }));
-    }
-    setShowForm(false);
+    const onSuccess = () => { setShowForm(false); toast.success(editId ? 'Entidade atualizada' : 'Entidade cadastrada'); };
+    const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha ao salvar entidade');
+    if (editId) update.mutate({ id: editId, form }, { onSuccess, onError });
+    else create.mutate(form, { onSuccess, onError });
   };
 
-  const remove = (id: string) => {
-    setData(d => ({
-      ...d,
-      entities: d.entities.filter(e => e.id !== id),
-      permissions: d.permissions.filter(p => p.entityId !== id),
-    }));
+  const inativar = (id: string) => {
+    if (!confirm('Inativar esta entidade?')) return;
+    removeMut.mutate(id, {
+      onSuccess: () => toast.success('Entidade inativada'),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao inativar'),
+    });
   };
 
   const pm = presentationMode;
@@ -65,9 +66,10 @@ export function EntitiesPage() {
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Tipo</label>
-              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent">
+              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} required className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent">
                 <option value="">Selecione...</option>
                 <option>Emergência</option>
+                <option>Autoridade Portuária</option>
                 <option>Regulatório</option>
                 <option>Ambiental</option>
                 <option>Segurança</option>
@@ -85,7 +87,8 @@ export function EntitiesPage() {
               </select>
             </div>
             <div className="md:col-span-2">
-              <button type="submit" className="w-full py-2 bg-accent text-accent-foreground rounded-md text-sm font-bold hover:opacity-90 transition-opacity">
+              <button type="submit" disabled={saving} className="w-full py-2 bg-accent text-accent-foreground rounded-md text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-2">
+                {saving && <Loader2 size={14} className="animate-spin" />}
                 {editId ? 'Salvar Alterações' : 'Cadastrar Entidade'}
               </button>
             </div>
@@ -106,7 +109,13 @@ export function EntitiesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {data.entities.map(e => (
+              {isLoading && (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground"><Loader2 size={16} className="animate-spin inline mr-2" />Carregando entidades...</td></tr>
+              )}
+              {isError && !isLoading && (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-primary">Falha ao carregar entidades da API.</td></tr>
+              )}
+              {!isLoading && !isError && entities.map(e => (
                 <tr key={e.id} className="hover:bg-secondary/50 transition-colors">
                   <td className="px-4 py-3 font-medium text-foreground">{e.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{e.type}</td>
@@ -118,10 +127,13 @@ export function EntitiesPage() {
                   </td>
                   <td className="px-4 py-3 text-right space-x-2">
                     <button onClick={() => openEdit(e)} className="text-accent font-bold text-xs hover:underline">Editar</button>
-                    <button onClick={() => remove(e.id)} className="text-emergency font-bold text-xs hover:underline">Excluir</button>
+                    <button onClick={() => inativar(e.id)} className="text-emergency font-bold text-xs hover:underline">Inativar</button>
                   </td>
                 </tr>
               ))}
+              {!isLoading && !isError && entities.length === 0 && (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Nenhuma entidade cadastrada.</td></tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { NotificationRule } from '@/lib/types';
-import { Bell, Plus, X, Shield, AlertTriangle, Check } from 'lucide-react';
+import { Bell, Plus, X, Shield, AlertTriangle } from 'lucide-react';
+import { useEntities, useNotificationRules, useNotificationRuleMutations } from '@/api';
 
 const OCCURRENCE_TYPES = [
   'Princípio de incêndio', 'Vazamento', 'Emergência', 'Explosão',
@@ -9,7 +11,11 @@ const OCCURRENCE_TYPES = [
 ];
 
 export function NotificationRulesPage() {
-  const { user, data, setData } = useAuth();
+  // `data` só para o histórico (EntityNotification é operacional — Fase 3).
+  const { user, data } = useAuth();
+  const { data: entities = [] } = useEntities();
+  const { data: notificationRules = [] } = useNotificationRules();
+  const { create, setMandatory, remove } = useNotificationRuleMutations();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ occurrenceType: '', entityId: '', mandatory: false });
 
@@ -17,39 +23,30 @@ export function NotificationRulesPage() {
 
   const addRule = () => {
     if (!form.occurrenceType || !form.entityId) return;
-    const rules = data.notificationRules ?? [];
-    const exists = rules.some(
-      r => r.occurrenceType === form.occurrenceType && r.entityId === form.entityId
+    create.mutate(
+      { occurrenceType: form.occurrenceType, entityId: form.entityId, mandatory: form.mandatory },
+      {
+        onSuccess: () => { setForm({ occurrenceType: '', entityId: '', mandatory: false }); setShowForm(false); toast.success('Regra adicionada'); },
+        onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao adicionar regra'),
+      },
     );
-    if (exists) return;
-    const newRule: NotificationRule = {
-      id: `nr${Date.now()}`,
-      occurrenceType: form.occurrenceType,
-      entityId: form.entityId,
-      mandatory: form.mandatory,
-    };
-    setData(d => ({ ...d, notificationRules: [...d.notificationRules, newRule] }));
-    setForm({ occurrenceType: '', entityId: '', mandatory: false });
-    setShowForm(false);
   };
 
   const removeRule = (id: string) => {
-    setData(d => ({ ...d, notificationRules: d.notificationRules.filter(r => r.id !== id) }));
+    remove.mutate(id, { onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao remover regra') });
   };
 
   const toggleMandatory = (id: string) => {
-    setData(d => ({
-      ...d,
-      notificationRules: d.notificationRules.map(r =>
-        r.id === id ? { ...r, mandatory: !r.mandatory } : r
-      ),
-    }));
+    const rule = notificationRules.find(r => r.id === id);
+    if (!rule) return;
+    setMandatory.mutate({ id, mandatory: !rule.mandatory }, {
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao atualizar regra'),
+    });
   };
 
-  const getEntityName = (id: string) => data.entities.find(e => e.id === id)?.name || id;
+  const getEntityName = (id: string) => entities.find(e => e.id === id)?.name || id;
 
-  const notificationRules = data.notificationRules ?? [];
-  const entityNotifications = data.entityNotifications ?? [];
+  const entityNotifications = data.entityNotifications ?? []; // mock (Fase 3)
 
   // Group rules by occurrence type
   const groupedRules: Record<string, NotificationRule[]> = {};
@@ -127,7 +124,7 @@ export function NotificationRulesPage() {
                 className="w-full px-3 py-2.5 bg-background border border-input rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="">Selecione...</option>
-                {data.entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                {entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
               </select>
             </div>
           </div>

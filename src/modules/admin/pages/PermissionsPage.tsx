@@ -1,24 +1,22 @@
-import { useAuth } from '@/lib/auth-context';
-import { AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { AlertCircle, Loader2 } from 'lucide-react';
+import { useEntities, useTerminals, usePermissions, usePermissionMutations } from '@/api';
 
 export function PermissionsPage() {
-  const { data, setData } = useAuth();
+  const { data: entities = [], isLoading: loadingEntities } = useEntities();
+  const { data: terminals = [] } = useTerminals();
+  const { data: permissions = [], isLoading: loadingPerms } = usePermissions();
+  const { set } = usePermissionMutations();
+
+  const isLoading = loadingEntities || loadingPerms;
 
   const togglePermission = (entityId: string, terminalId: string) => {
-    setData(d => {
-      const perms = [...d.permissions];
-      const idx = perms.findIndex(p => p.entityId === entityId);
-      if (idx === -1) {
-        perms.push({ entityId, terminalIds: [terminalId] });
-      } else {
-        const tIds = perms[idx].terminalIds;
-        if (tIds.includes(terminalId)) {
-          perms[idx] = { ...perms[idx], terminalIds: tIds.filter(id => id !== terminalId) };
-        } else {
-          perms[idx] = { ...perms[idx], terminalIds: [...tIds, terminalId] };
-        }
-      }
-      return { ...d, permissions: perms };
+    const current = permissions.find(p => p.entityId === entityId)?.terminalIds || [];
+    const next = current.includes(terminalId)
+      ? current.filter(id => id !== terminalId)
+      : [...current, terminalId];
+    set.mutate({ entityId, terminalIds: next }, {
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao salvar permissão'),
     });
   };
 
@@ -33,42 +31,53 @@ export function PermissionsPage() {
         </p>
       </div>
 
-      <div className="grid gap-4">
-        {data.entities.map(entity => {
-          const perm = data.permissions.find(p => p.entityId === entity.id);
-          const allowedCount = perm?.terminalIds.length || 0;
+      {isLoading && (
+        <div className="bg-card border border-border rounded-lg p-8 text-center text-muted-foreground">
+          <Loader2 size={18} className="animate-spin inline mr-2" />Carregando permissões...
+        </div>
+      )}
 
-          return (
-            <div key={entity.id} className="bg-card border border-border rounded-lg p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h4 className="font-bold text-foreground">{entity.name}</h4>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">{entity.type} · {entity.contact}</p>
+      {!isLoading && (
+        <div className="grid gap-4">
+          {entities.map(entity => {
+            const perm = permissions.find(p => p.entityId === entity.id);
+            const allowedCount = perm?.terminalIds.length || 0;
+
+            return (
+              <div key={entity.id} className="bg-card border border-border rounded-lg p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h4 className="font-bold text-foreground">{entity.name}</h4>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">{entity.type} · {entity.contact}</p>
+                  </div>
+                  <span className="text-xs font-mono-data text-muted-foreground">{allowedCount}/{terminals.length} terminais</span>
                 </div>
-                <span className="text-xs font-mono-data text-muted-foreground">{allowedCount}/{data.terminals.length} terminais</span>
+                <div className="flex flex-wrap gap-2">
+                  {terminals.map(terminal => {
+                    const isPermitted = perm?.terminalIds.includes(terminal.id) || false;
+                    return (
+                      <button
+                        key={terminal.id}
+                        onClick={() => togglePermission(entity.id, terminal.id)}
+                        className={`px-4 py-2 rounded-md border text-xs font-bold transition-all ${
+                          isPermitted
+                            ? 'bg-primary border-primary text-primary-foreground'
+                            : 'bg-card border-border text-muted-foreground hover:border-foreground/30'
+                        }`}
+                      >
+                        {terminal.name}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {data.terminals.map(terminal => {
-                  const isPermitted = perm?.terminalIds.includes(terminal.id) || false;
-                  return (
-                    <button
-                      key={terminal.id}
-                      onClick={() => togglePermission(entity.id, terminal.id)}
-                      className={`px-4 py-2 rounded-md border text-xs font-bold transition-all ${
-                        isPermitted
-                          ? 'bg-primary border-primary text-primary-foreground'
-                          : 'bg-card border-border text-muted-foreground hover:border-foreground/30'
-                      }`}
-                    >
-                      {terminal.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+          {entities.length === 0 && (
+            <p className="text-sm text-muted-foreground italic bg-card border border-border rounded-lg p-6">Nenhuma entidade cadastrada.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
