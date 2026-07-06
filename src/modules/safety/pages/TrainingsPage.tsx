@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
-import { Training, UserTraining } from '@/lib/types';
-import { canManage, getVisibleTerminalIds, isTerminalLocked } from '@/lib/access-control';
+import { canManage, isTerminalLocked } from '@/lib/access-control';
+import { useTrainings, useTrainingAssignments, useTrainingMutations, useUsers, useTerminals, usePermissions } from '@/api';
 import {
   GraduationCap, Plus, Trash2, CheckCircle, AlertTriangle, Clock, X, Users, UserPlus,
   Filter, Search, ChevronDown, ChevronUp, CalendarDays, Shield, FileText, Award,
@@ -50,7 +51,14 @@ function statusBarColor(status: TrainingStatus) {
 }
 
 export function TrainingsPage() {
-  const { user, data, setData } = useAuth();
+  const { user } = useAuth();
+  const { data: trainings = [] } = useTrainings();
+  const { data: userTrainings = [] } = useTrainingAssignments();
+  const { data: users = [] } = useUsers();
+  const { data: terminals = [] } = useTerminals();
+  const { data: permissions = [] } = usePermissions();
+  const { create, remove: removeTrainingMut, assign, removeAssignment } = useTrainingMutations();
+  const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
   const [showForm, setShowForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
@@ -60,8 +68,14 @@ export function TrainingsPage() {
   const [batchAssign, setBatchAssign] = useState<string | null>(null);
   const [assignForm, setAssignForm] = useState({ userId: '', completedDate: '', expiryDate: '', certificate: '' });
 
-  // Terminal isolation
-  const visibleTerminalIds = useMemo(() => getVisibleTerminalIds(user, data), [user, data]);
+  // Terminal isolation (fonte: API)
+  const visibleTerminalIds = useMemo(() => {
+    if (!user) return [];
+    if (user.role === 'admin') return terminals.map(t => t.id);
+    if (user.role === 'terminal') return user.linkId ? [user.linkId] : [];
+    if (user.role === 'entity') return permissions.find(p => p.entityId === user.linkId)?.terminalIds || [];
+    return [];
+  }, [user, terminals, permissions]);
   const terminalLocked = isTerminalLocked(user);
 
   // Filters — auto-lock terminal for non-admin users
@@ -73,15 +87,15 @@ export function TrainingsPage() {
 
   // Classified — scoped to visible terminals
   const classified = useMemo(() => {
-    return data.userTrainings.map(ut => {
-      const u = data.users.find(u => u.id === ut.userId);
-      const training = data.trainings.find(t => t.id === ut.trainingId);
+    return userTrainings.map(ut => {
+      const u = users.find(u => u.id === ut.userId);
+      const training = trainings.find(t => t.id === ut.trainingId);
       return { ...ut, status: getStatus(ut.expiryDate), user: u, training };
     }).filter(ut => {
       if (!ut.user) return false;
       return visibleTerminalIds.includes(ut.user.linkId || '');
     });
-  }, [data, visibleTerminalIds]);
+  }, [userTrainings, users, trainings, visibleTerminalIds]);
 
   // Filtered
   const filteredAssignments = useMemo(() => {
@@ -102,15 +116,15 @@ export function TrainingsPage() {
   // Pending: mandatory trainings not assigned to any user or expired
   const pendingCount = useMemo(() => {
     let count = 0;
-    const mandatoryTrainings = data.trainings.filter(t => t.mandatory);
-    for (const u of data.users) {
+    const mandatoryTrainings = trainings.filter(t => t.mandatory);
+    for (const u of users) {
       for (const t of mandatoryTrainings) {
-        const has = data.userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired');
+        const has = userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired');
         if (!has) count++;
       }
     }
     return count;
-  }, [data]);
+  }, [trainings, users, userTrainings]);
 
   // Charts
   const donutData = [
@@ -119,8 +133,8 @@ export function TrainingsPage() {
     { name: 'Vencidos', value: expiredCount, color: COLORS.expired },
   ].filter(d => d.value > 0);
 
-  const barData = data.terminals.map(t => {
-    const tUsers = data.users.filter(u => u.linkId === t.id).map(u => u.id);
+  const barData = terminals.map(t => {
+    const tUsers = users.filter(u => u.linkId === t.id).map(u => u.id);
     const tClassified = classified.filter(c => tUsers.includes(c.userId));
     return {
       name: t.name.length > 14 ? t.name.substring(0, 14) + '…' : t.name,
@@ -142,14 +156,14 @@ export function TrainingsPage() {
     }
     return Array.from(map.entries())
       .map(([userId, items]) => {
-        const u = data.users.find(u => u.id === userId);
-        const mandatoryTrainings = data.trainings.filter(t => t.mandatory);
+        const u = users.find(u => u.id === userId);
+        const mandatoryTrainings = trainings.filter(t => t.mandatory);
         const completedMandatory = mandatoryTrainings.filter(t =>
           items.some(i => i.trainingId === t.id && i.status !== 'expired')
         ).length;
         // Find pending mandatory trainings for this user
         const pendingTrainings = mandatoryTrainings.filter(t =>
-          !data.userTrainings.some(ut => ut.userId === userId && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired')
+          !userTrainings.some(ut => ut.userId === userId && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired')
         );
         return {
           userId, user: u, items,
@@ -165,15 +179,15 @@ export function TrainingsPage() {
         if (a.hasSoon !== b.hasSoon) return a.hasSoon ? -1 : 1;
         return (a.user?.name || '').localeCompare(b.user?.name || '');
       });
-  }, [filteredAssignments, data.users, data.trainings, data.userTrainings]);
+  }, [filteredAssignments, users, trainings, userTrainings]);
 
   // Also include users with NO assignments but with pending mandatory trainings
   const allUserGroups = useMemo(() => {
     const existingUserIds = new Set(userGroups.map(g => g.userId));
-    const mandatoryTrainings = data.trainings.filter(t => t.mandatory);
+    const mandatoryTrainings = trainings.filter(t => t.mandatory);
     if (mandatoryTrainings.length === 0) return userGroups;
 
-    const additionalUsers = data.users
+    const additionalUsers = users
       .filter(u => !existingUserIds.has(u.id))
       .filter(u => {
         if (filterTerminal !== 'all' && u.linkId !== filterTerminal) return false;
@@ -182,7 +196,7 @@ export function TrainingsPage() {
       })
       .map(u => {
         const pendingTrainings = mandatoryTrainings.filter(t =>
-          !data.userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired')
+          !userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired')
         );
         if (pendingTrainings.length === 0) return null;
         return {
@@ -195,70 +209,73 @@ export function TrainingsPage() {
       .filter(Boolean) as typeof userGroups;
 
     return [...userGroups, ...additionalUsers];
-  }, [userGroups, data.users, data.trainings, data.userTrainings, filterTerminal, searchUser]);
+  }, [userGroups, users, trainings, userTrainings, filterTerminal, searchUser]);
 
   // Actions
   const addTraining = () => {
     if (!form.name) { setFormError('Informe o nome do treinamento.'); return; }
     setFormError('');
-    const t: Training = {
-      id: `tr${Date.now()}`, name: form.name, description: form.description, mandatory: form.mandatory,
-      materialFileName: form.materialFileName || undefined,
-      videoUrl: form.videoUrl || undefined,
-      terminalId: form.terminalId || undefined,
-    };
-    setData(d => ({ ...d, trainings: [...d.trainings, t] }));
-    setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalId: '' });
-    setShowForm(false);
+    create.mutate(
+      {
+        name: form.name, description: form.description, mandatory: form.mandatory,
+        materialFileName: form.materialFileName || undefined,
+        videoUrl: form.videoUrl || undefined,
+        terminalId: form.terminalId || undefined,
+      },
+      {
+        onSuccess: () => {
+          setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalId: '' });
+          setShowForm(false);
+          toast.success('Treinamento criado');
+        },
+        onError,
+      },
+    );
   };
 
-  // Batch assign training to multiple users
+  // Batch assign — o back aplica defaults (hoje / +1 ano) e pula atribuições vigentes
   const batchAssignTraining = (trainingId: string, userIds: string[]) => {
     if (userIds.length === 0) return;
-    const today = new Date().toISOString().split('T')[0];
-    const oneYear = new Date(new Date().getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const newUts: UserTraining[] = userIds
-      .filter(uid => !data.userTrainings.some(ut => ut.trainingId === trainingId && ut.userId === uid))
-      .map((uid, i) => ({
-        id: `ut${Date.now()}${i}`, trainingId, userId: uid,
-        completedDate: today, expiryDate: oneYear,
-      }));
-    if (newUts.length > 0) {
-      setData(d => ({ ...d, userTrainings: [...d.userTrainings, ...newUts] }));
-    }
-    setBatchAssign(null);
+    assign.mutate({ id: trainingId, input: { userIds } }, {
+      onSuccess: () => { setBatchAssign(null); toast.success('Treinamento atribuído'); },
+      onError,
+    });
   };
 
 
   const removeTraining = (id: string) => {
-    setData(d => ({ ...d, trainings: d.trainings.filter(t => t.id !== id), userTrainings: d.userTrainings.filter(ut => ut.trainingId !== id) }));
+    if (!confirm('Remover este treinamento e suas atribuições?')) return;
+    removeTrainingMut.mutate(id, { onSuccess: () => toast.success('Treinamento removido'), onError });
   };
 
   const assignTraining = (trainingId: string) => {
     if (!assignForm.userId || !assignForm.completedDate || !assignForm.expiryDate) return;
-    const ut: UserTraining = {
-      id: `ut${Date.now()}`, trainingId, userId: assignForm.userId,
-      completedDate: assignForm.completedDate, expiryDate: assignForm.expiryDate,
-      certificate: assignForm.certificate || undefined,
-    };
-    setData(d => ({ ...d, userTrainings: [...d.userTrainings, ut] }));
-    setAssignForm({ userId: '', completedDate: '', expiryDate: '', certificate: '' });
-    setShowAssignForm(null);
+    assign.mutate(
+      {
+        id: trainingId,
+        input: {
+          userIds: [assignForm.userId],
+          completedDate: assignForm.completedDate, expiryDate: assignForm.expiryDate,
+          certificate: assignForm.certificate || undefined,
+        },
+      },
+      {
+        onSuccess: () => {
+          setAssignForm({ userId: '', completedDate: '', expiryDate: '', certificate: '' });
+          setShowAssignForm(null);
+        },
+        onError,
+      },
+    );
   };
 
   const removeUserTraining = (id: string) => {
-    setData(d => ({ ...d, userTrainings: d.userTrainings.filter(ut => ut.id !== id) }));
+    removeAssignment.mutate(id, { onError });
   };
 
-  // Quick completion: mark a training as completed for a user with today's date and +1 year expiry
+  // Quick completion: o back aplica hoje / +1 ano
   const quickComplete = (trainingId: string, userId: string) => {
-    const today = new Date().toISOString().split('T')[0];
-    const oneYearLater = new Date(new Date().getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const ut: UserTraining = {
-      id: `ut${Date.now()}`, trainingId, userId,
-      completedDate: today, expiryDate: oneYearLater,
-    };
-    setData(d => ({ ...d, userTrainings: [...d.userTrainings, ut] }));
+    assign.mutate({ id: trainingId, input: { userIds: [userId] } }, { onError });
   };
 
   if (!user || (user.role !== 'admin' && user.role !== 'terminal')) return <p className="text-muted-foreground text-sm">Acesso restrito.</p>;
@@ -290,8 +307,8 @@ export function TrainingsPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <div className="bg-card border rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Total</p>
-          <p className="text-xl font-mono font-bold text-foreground">{data.trainings.length}</p>
-          <p className="text-[10px] text-muted-foreground">{data.trainings.filter(t => t.mandatory).length} obrigatórios</p>
+          <p className="text-xl font-mono font-bold text-foreground">{trainings.length}</p>
+          <p className="text-[10px] text-muted-foreground">{trainings.filter(t => t.mandatory).length} obrigatórios</p>
         </div>
         <div className="bg-card border border-success/20 rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Concluídos</p>
@@ -385,7 +402,7 @@ export function TrainingsPage() {
             <select value={filterTerminal} onChange={e => setFilterTerminal(e.target.value)}
               className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
               <option value="all">Todos os terminais</option>
-              {data.terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           )}
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -414,7 +431,7 @@ export function TrainingsPage() {
               <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))}
                 className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground">
                 <option value="">Selecione o terminal...</option>
-                {data.terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
             <div className="flex items-end">
@@ -464,7 +481,7 @@ export function TrainingsPage() {
           )}
           {allUserGroups.map(({ userId, user: u, items, hasExpired, hasSoon, mandatoryTotal, mandatoryCompleted, pendingTrainings }) => {
             const isExpanded = expandedUser === userId;
-            const terminal = u?.linkId ? data.terminals.find(t => t.id === u.linkId) : null;
+            const terminal = u?.linkId ? terminals.find(t => t.id === u.linkId) : null;
             const expCount = items.filter(i => i.status === 'expired').length;
             const soonC = items.filter(i => i.status === 'soon').length;
 
@@ -622,7 +639,7 @@ export function TrainingsPage() {
       {/* ===== TRAINING VIEW ===== */}
       {viewMode === 'training' && (
         <div className="space-y-4">
-          {data.trainings
+          {trainings
             .filter(t => filterMandatory === 'all' || (filterMandatory === 'yes' ? t.mandatory : !t.mandatory))
             .map(training => {
               const assignments = filteredAssignments.filter(a => a.trainingId === training.id);
@@ -637,7 +654,7 @@ export function TrainingsPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-bold text-foreground">{training.name}</span>
                           {training.mandatory && <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded font-bold">OBRIGATÓRIO</span>}
-                          {training.terminalId && (() => { const t = data.terminals.find(t => t.id === training.terminalId); return t ? <span className="text-[9px] px-1.5 py-0.5 bg-accent text-accent-foreground rounded font-bold">{t.name}</span> : null; })()}
+                          {training.terminalId && (() => { const t = terminals.find(t => t.id === training.terminalId); return t ? <span className="text-[9px] px-1.5 py-0.5 bg-accent text-accent-foreground rounded font-bold">{t.name}</span> : null; })()}
                           {!training.terminalId && <span className="text-[9px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded font-bold">GLOBAL</span>}
                         </div>
                         <p className="text-[10px] text-muted-foreground mt-0.5">{training.description}</p>
@@ -705,7 +722,7 @@ export function TrainingsPage() {
               );
             })}
 
-          {data.trainings.length === 0 && (
+          {trainings.length === 0 && (
             <div className="text-center py-12 text-muted-foreground text-sm">Nenhum treinamento cadastrado.</div>
           )}
         </div>
@@ -717,11 +734,11 @@ export function TrainingsPage() {
           open={!!batchAssign}
           onClose={() => setBatchAssign(null)}
           title={`Atribuir Treinamento`}
-          description={`Selecione os usuários que receberão o treinamento "${data.trainings.find(t => t.id === batchAssign)?.name || ''}".`}
+          description={`Selecione os usuários que receberão o treinamento "${trainings.find(t => t.id === batchAssign)?.name || ''}".`}
           confirmLabel="Confirmar Atribuição"
-          users={data.users}
-          terminals={data.terminals}
-          alreadyAssignedIds={new Set(data.userTrainings.filter(ut => ut.trainingId === batchAssign).map(ut => ut.userId))}
+          users={users}
+          terminals={terminals}
+          alreadyAssignedIds={new Set(userTrainings.filter(ut => ut.trainingId === batchAssign).map(ut => ut.userId))}
           onConfirm={(userIds) => batchAssignTraining(batchAssign, userIds)}
         />
       )}

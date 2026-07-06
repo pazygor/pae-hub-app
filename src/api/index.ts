@@ -13,5 +13,6 @@ export * from './dashboard';
 export * from './entity-notifications';
 export * from './chat';
 export * from './pae-resources';
+export * from './safety';
 export * from './realtime';
 export * from './hooks';

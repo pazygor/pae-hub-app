@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { getDefaultSafetySubModules, SafetySubModule } from '@/lib/modules';
-import { UserTraining, UserEPI, ComplianceItem, ComplianceStatus } from '@/lib/types';
+import { UserTraining, ComplianceStatus } from '@/lib/types';
+import { useTrainings, useTrainingAssignments, useTrainingMutations, useEpis, useEpiDeliveries, useCompliance, useComplianceMutations, useTerminals } from '@/api';
 import {
   User, GraduationCap, HardHat, ClipboardCheck, CheckCircle2, AlertTriangle,
   XCircle, Clock, ExternalLink, FileText, Play, Check, Shield, AlertCircle
@@ -31,13 +33,23 @@ const EPI_STATUS_CFG: Record<string, { label: string; color: string; bg: string 
 };
 
 export function MyPanelPage() {
-  const { user, data, setData } = useAuth();
+  // `data` só para o licenciamento de módulos (terminalModules — Fase 5d)
+  const { user, data } = useAuth();
+  const { data: trainings = [] } = useTrainings();
+  const { data: userTrainings = [] } = useTrainingAssignments();
+  const { data: epis = [] } = useEpis();
+  const { data: userEPIs = [] } = useEpiDeliveries();
+  const { data: complianceItems = [] } = useCompliance();
+  const { data: terminals = [] } = useTerminals();
+  const { assign, removeAssignment } = useTrainingMutations();
+  const { update: updateCompliance } = useComplianceMutations();
   const now = new Date();
   const [confirmedEPIs, setConfirmedEPIs] = useState<Set<string>>(new Set());
+  const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
 
   if (!user) return null;
 
-  const terminal = user.linkId ? data.terminals.find(t => t.id === user.linkId) : null;
+  const terminal = user.linkId ? terminals.find(t => t.id === user.linkId) : null;
 
   // Active sub-modules
   const getActiveSubs = (): SafetySubModule[] => {
@@ -51,11 +63,14 @@ export function MyPanelPage() {
   const hasCompliance = activeSubs.includes('compliance');
 
   // === TRAININGS (only explicitly assigned to this user via userTrainings) ===
-  const myTrainingRecords = data.userTrainings.filter(ut => ut.userId === user.id);
+  const myTrainingRecords = userTrainings.filter(ut => ut.userId === user.id);
   const myTrainingIds = new Set(myTrainingRecords.map(r => r.trainingId));
-  const myTrainings = data.trainings.filter(t => myTrainingIds.has(t.id));
+  const myTrainings = trainings.filter(t => myTrainingIds.has(t.id));
   const trainingItems = myTrainings.map(t => {
-    const record = myTrainingRecords.find(r => r.trainingId === t.id);
+    // Registro mais recente do treinamento (refazer cria um novo registro)
+    const record = myTrainingRecords
+      .filter(r => r.trainingId === t.id)
+      .sort((a, b) => String(b.expiryDate).localeCompare(String(a.expiryDate)))[0] ?? null;
     const status = getTrainingStatus(record, now);
     return { training: t, record, status };
   });
@@ -63,53 +78,41 @@ export function MyPanelPage() {
   const expiredTrainings = trainingItems.filter(t => t.status === 'vencido').length;
 
   // === EPIs ===
-  const myEPIs = data.userEPIs.filter(ue => ue.userId === user.id && ue.usageStatus !== 'substituido' && ue.usageStatus !== 'devolvido');
+  const myEPIs = userEPIs.filter(ue => ue.userId === user.id && ue.usageStatus !== 'substituido' && ue.usageStatus !== 'devolvido');
   const epiItems = myEPIs.map(ue => {
-    const epi = data.epis.find(e => e.id === ue.epiId);
+    const epi = epis.find(e => e.id === ue.epiId);
     const isExpired = ue.expiryDate && new Date(ue.expiryDate) < now;
     return { userEpi: ue, epi, status: isExpired ? 'vencido' : 'valido' };
   });
   const expiredEPIs = epiItems.filter(e => e.status === 'vencido').length;
 
   // === COMPLIANCE ===
-  const myCompliance = (data.complianceItems || []).filter(
+  const myCompliance = complianceItems.filter(
     ci => ci.userId === user.id || ci.responsible === user.name
   );
 
   // Actions
   const completeTraining = (trainingId: string) => {
-    const today = now.toISOString().split('T')[0];
-    const oneYear = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const existing = myTrainingRecords.find(r => r.trainingId === trainingId);
+    // Registro vencido é removido e recriado com validade nova (hoje / +1 ano no back)
+    const existing = myTrainingRecords.find(r => r.trainingId === trainingId && new Date(r.expiryDate) < now);
+    const doAssign = () =>
+      assign.mutate({ id: trainingId, input: { userIds: [user.id] } }, {
+        onSuccess: () => toast.success('Treinamento concluído'),
+        onError,
+      });
     if (existing) {
-      setData(d => ({
-        ...d,
-        userTrainings: d.userTrainings.map(ut =>
-          ut.id === existing.id ? { ...ut, completedDate: today, expiryDate: oneYear } : ut
-        ),
-      }));
+      removeAssignment.mutate(existing.id, { onSuccess: doAssign, onError });
     } else {
-      const ut: UserTraining = {
-        id: `ut${Date.now()}`, trainingId, userId: user.id,
-        completedDate: today, expiryDate: oneYear,
-      };
-      setData(d => ({ ...d, userTrainings: [...d.userTrainings, ut] }));
+      doAssign();
     }
   };
 
-  
   const confirmEPI = (userEpiId: string) => {
     setConfirmedEPIs(prev => new Set(prev).add(userEpiId));
   };
 
   const updateComplianceStatus = (id: string, status: ComplianceStatus) => {
-    const today = now.toISOString().split('T')[0];
-    setData(d => ({
-      ...d,
-      complianceItems: (d.complianceItems || []).map(i =>
-        i.id === id ? { ...i, status, verificationDate: today } : i
-      ),
-    }));
+    updateCompliance.mutate({ id, input: { status } }, { onError });
   };
 
   const totalAlerts = pendingTrainings + expiredTrainings + expiredEPIs;

@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
+import { useCompliance, useComplianceMutations, useEpis, useTrainings, useTrainingAssignments, useEpiDeliveries, useUsers, useTerminals, usePermissions } from '@/api';
 import { ComplianceItem, ComplianceStatus } from '@/lib/types';
-import { canManage, getVisibleTerminalIds, isTerminalLocked } from '@/lib/access-control';
+import { canManage, isTerminalLocked } from '@/lib/access-control';
 import { isMenuItemAccessible, getDefaultModules, getDefaultSafetySubModules, ProductModule, SafetySubModule } from '@/lib/modules';
 import {
   CheckCircle2, XCircle, AlertTriangle, Filter, Search, AlertCircle, Plus, X, Trash2,
@@ -26,7 +28,18 @@ const COMPLIANCE_STATUS_MAP: Record<ComplianceStatus, SafetyStatus> = {
 function fmtDate(iso: string) { return new Date(iso).toLocaleDateString('pt-BR'); }
 
 export function CompliancePage() {
-  const { user, data, setData } = useAuth();
+  // `data` permanece só para terminalModules (licenciamento — Fase 5d)
+  const { user, data } = useAuth();
+  const { data: complianceItems = [] } = useCompliance();
+  const { data: trainings = [] } = useTrainings();
+  const { data: userTrainings = [] } = useTrainingAssignments();
+  const { data: epis = [] } = useEpis();
+  const { data: userEPIs = [] } = useEpiDeliveries();
+  const { data: users = [] } = useUsers();
+  const { data: terminals = [] } = useTerminals();
+  const { data: permissions = [] } = usePermissions();
+  const { create, update, remove } = useComplianceMutations();
+  const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
   const now = new Date();
   const soon = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
@@ -41,8 +54,14 @@ export function CompliancePage() {
   const hasEPIs = activeSubs.includes('epis');
   const hasIntegration = hasTrainings || hasEPIs;
 
-  // Terminal isolation
-  const visibleTerminalIds = useMemo(() => getVisibleTerminalIds(user, data), [user, data]);
+  // Terminal isolation (fonte: API)
+  const visibleTerminalIds = useMemo(() => {
+    if (!user) return [];
+    if (user.role === 'admin') return terminals.map(t => t.id);
+    if (user.role === 'terminal') return user.linkId ? [user.linkId] : [];
+    if (user.role === 'entity') return permissions.find(p => p.entityId === user.linkId)?.terminalIds || [];
+    return [];
+  }, [user, terminals, permissions]);
   const terminalLocked = isTerminalLocked(user);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,12 +76,12 @@ export function CompliancePage() {
   // ===== INTEGRATED DATA (from trainings & EPIs) =====
   const userSummaries = useMemo(() => {
     if (!hasIntegration) return [];
-    return data.users
+    return users
       .filter(u => visibleTerminalIds.includes(u.linkId || ''))
       .map(u => {
-      const uTrainings = hasTrainings ? data.userTrainings.filter(ut => ut.userId === u.id) : [];
-      const uEPIs = hasEPIs ? data.userEPIs.filter(ue => ue.userId === u.id) : [];
-      const mandatoryTrainings = hasTrainings ? data.trainings.filter(t => t.mandatory) : [];
+      const uTrainings = hasTrainings ? userTrainings.filter(ut => ut.userId === u.id) : [];
+      const uEPIs = hasEPIs ? userEPIs.filter(ue => ue.userId === u.id) : [];
+      const mandatoryTrainings = hasTrainings ? trainings.filter(t => t.mandatory) : [];
 
       const missingTrainings = mandatoryTrainings.filter(t => !uTrainings.some(ut => ut.trainingId === t.id && new Date(ut.expiryDate) >= now));
       const expiredTrainings = uTrainings.filter(ut => new Date(ut.expiryDate) < now);
@@ -76,7 +95,7 @@ export function CompliancePage() {
       if (missingTrainings.length > 0 || expiredTrainings.length > 0 || expiredEPIs.length > 0) status = 'nao_conforme';
       else if (soonTrainings.length > 0 || soonEPIs.length > 0) status = 'atencao';
 
-      const terminal = u.linkId ? data.terminals.find(t => t.id === u.linkId) : null;
+      const terminal = u.linkId ? terminals.find(t => t.id === u.linkId) : null;
       return { user: u, status, missingTrainings, expiredTrainings, expiredEPIs, soonTrainings, soonEPIs, totalCompleted, totalEPIsValid, totalMandatory: mandatoryTrainings.length, totalEPIsDelivered: uEPIs.length, terminal };
     });
   }, [data, hasTrainings, hasEPIs, visibleTerminalIds]);
@@ -91,7 +110,7 @@ export function CompliancePage() {
   }, [userSummaries, searchTerm, filterStatus, effectiveTerminalFilter]);
 
   // ===== MANUAL COMPLIANCE ITEMS =====
-  const manualItems = data.complianceItems || [];
+  const manualItems = complianceItems;
   const filteredManual = useMemo(() => {
     return manualItems.filter(item => {
       // Terminal isolation for manual items
@@ -114,42 +133,45 @@ export function CompliancePage() {
   const totalOp = intOp + manOp;
   const totalAt = intAt + manAt;
   const totalNc = intNc + manNc;
-  const totalItems = (hasIntegration ? data.users.length : 0) + manualItems.length;
+  const totalItems = (hasIntegration ? users.length : 0) + manualItems.length;
 
   // Actions
   const addItem = () => {
     if (!form.name) return;
-    const today = new Date().toISOString().split('T')[0];
-    const item: ComplianceItem = {
-      id: `ci${Date.now()}`, name: form.name, responsible: form.responsible,
-      status: form.status, expiryDate: form.expiryDate || null,
-      userId: form.userId || null, notes: form.notes,
-      terminalId: form.terminalId || null, area: form.area || '',
-      verificationDate: form.verificationDate || today,
-    };
-    setData(d => ({ ...d, complianceItems: [...(d.complianceItems || []), item] }));
-    setForm({ name: '', responsible: '', status: 'conforme', expiryDate: '', userId: '', notes: '', terminalId: '', area: '', verificationDate: '' });
-    setShowForm(false);
+    create.mutate(
+      {
+        name: form.name, responsible: form.responsible,
+        status: form.status, expiryDate: form.expiryDate || undefined,
+        userId: form.userId || undefined, notes: form.notes || undefined,
+        terminalId: form.terminalId || undefined, area: form.area || undefined,
+        verificationDate: form.verificationDate || undefined,
+      },
+      {
+        onSuccess: () => {
+          setForm({ name: '', responsible: '', status: 'conforme', expiryDate: '', userId: '', notes: '', terminalId: '', area: '', verificationDate: '' });
+          setShowForm(false);
+          toast.success('Item de conformidade criado');
+        },
+        onError,
+      },
+    );
   };
 
   const removeItem = (id: string) => {
-    setData(d => ({ ...d, complianceItems: (d.complianceItems || []).filter(i => i.id !== id) }));
+    if (!confirm('Remover este item?')) return;
+    remove.mutate(id, { onError });
   };
 
   const updateItemStatus = (id: string, status: ComplianceStatus) => {
-    const today = new Date().toISOString().split('T')[0];
-    setData(d => ({
-      ...d,
-      complianceItems: (d.complianceItems || []).map(i => i.id === id ? { ...i, status, verificationDate: today } : i),
-    }));
+    // O back registra a verificação de hoje na mudança de status
+    update.mutate({ id, input: { status } }, { onError });
   };
 
   const correctItem = (id: string) => {
-    const today = new Date().toISOString().split('T')[0];
-    setData(d => ({
-      ...d,
-      complianceItems: (d.complianceItems || []).map(i => i.id === id ? { ...i, status: 'conforme' as ComplianceStatus, verificationDate: today } : i),
-    }));
+    update.mutate({ id, input: { status: 'conforme' } }, {
+      onSuccess: () => toast.success('Item corrigido'),
+      onError,
+    });
   };
 
   const nonConformItems = manualItems.filter(i => i.status === 'nao_conforme');
@@ -231,7 +253,7 @@ export function CompliancePage() {
             <select value={filterTerminal} onChange={e => setFilterTerminal(e.target.value)}
               className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
               <option value="all">Todos os terminais</option>
-              {data.terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           )}
         </div>
@@ -271,7 +293,7 @@ export function CompliancePage() {
               <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))}
                 className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground">
                 <option value="">Nenhum</option>
-                {data.terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
             <div>
@@ -296,7 +318,7 @@ export function CompliancePage() {
               <select value={form.userId} onChange={e => setForm(f => ({ ...f, userId: e.target.value }))}
                 className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground">
                 <option value="">Nenhum</option>
-                {data.users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </div>
             <div>
@@ -314,7 +336,7 @@ export function CompliancePage() {
         <div className="bg-card border rounded-xl overflow-hidden">
           <div className="px-5 py-4 border-b flex items-center justify-between">
             <h3 className="text-sm font-bold text-foreground">Conformidade por Usuário</h3>
-            <span className="text-xs text-muted-foreground">{filteredIntegrated.length} de {data.users.length}</span>
+            <span className="text-xs text-muted-foreground">{filteredIntegrated.length} de {users.length}</span>
           </div>
           <div className="divide-y divide-border">
             {filteredIntegrated.length === 0 && (
@@ -355,19 +377,19 @@ export function CompliancePage() {
                         <div key={t.id} className="flex items-center gap-2 text-xs text-primary"><AlertTriangle size={12} /><span>Obrigatório ausente: <strong>{t.name}</strong></span></div>
                       ))}
                       {expiredTrainings.map(ut => {
-                        const t = data.trainings.find(tr => tr.id === ut.trainingId);
+                        const t = trainings.find(tr => tr.id === ut.trainingId);
                         return <div key={ut.id} className="flex items-center gap-2 text-xs text-primary"><AlertTriangle size={12} /><span>Treinamento vencido: <strong>{t?.name}</strong> ({fmtDate(ut.expiryDate)})</span></div>;
                       })}
                       {expiredEPIs.map(ue => {
-                        const e = data.epis.find(ep => ep.id === ue.epiId);
+                        const e = epis.find(ep => ep.id === ue.epiId);
                         return <div key={ue.id} className="flex items-center gap-2 text-xs text-primary"><AlertTriangle size={12} /><span>EPI vencido: <strong>{e?.name}</strong> ({fmtDate(ue.expiryDate!)})</span></div>;
                       })}
                       {soonTrainings.map(ut => {
-                        const t = data.trainings.find(tr => tr.id === ut.trainingId);
+                        const t = trainings.find(tr => tr.id === ut.trainingId);
                         return <div key={ut.id} className="flex items-center gap-2 text-xs text-warning"><AlertCircle size={12} /><span>Vencendo: <strong>{t?.name}</strong> ({fmtDate(ut.expiryDate)})</span></div>;
                       })}
                       {soonEPIs.map(ue => {
-                        const e = data.epis.find(ep => ep.id === ue.epiId);
+                        const e = epis.find(ep => ep.id === ue.epiId);
                         return <div key={ue.id} className="flex items-center gap-2 text-xs text-warning"><AlertCircle size={12} /><span>EPI vencendo: <strong>{e?.name}</strong> ({fmtDate(ue.expiryDate!)})</span></div>;
                       })}
                     </div>
@@ -411,7 +433,7 @@ export function CompliancePage() {
             const status = COMPLIANCE_STATUS_MAP[item.status];
             const cfg = STATUS_CONFIG[status];
             const StatusIcon = cfg.icon;
-            const linkedUser = item.userId ? data.users.find(u => u.id === item.userId) : null;
+            const linkedUser = item.userId ? users.find(u => u.id === item.userId) : null;
             const isOverdue = item.expiryDate && new Date(item.expiryDate) < now;
             const isSoon = item.expiryDate && !isOverdue && new Date(item.expiryDate) <= soon;
             const isNonConform = item.status === 'nao_conforme';
@@ -435,7 +457,7 @@ export function CompliancePage() {
                         {item.terminalId && (
                           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                             <Shield size={11} className="shrink-0" />
-                            <span>{data.terminals.find(t => t.id === item.terminalId)?.name || '—'}</span>
+                            <span>{terminals.find(t => t.id === item.terminalId)?.name || '—'}</span>
                           </div>
                         )}
                         {item.area && (

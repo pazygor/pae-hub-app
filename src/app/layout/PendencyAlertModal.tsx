@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle as AlertTriangleIcon, X, GraduationCap, HardHat, ClipboardCheck } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { getUserActiveConfig } from '@/lib/access-control';
+import { useTrainings, useTrainingAssignments, useEpiDeliveries, useCompliance } from '@/api';
 
 /**
  * Alerta de pendências operacionais exibido após o login (movido do PAESystem).
@@ -11,30 +12,35 @@ import { getUserActiveConfig } from '@/lib/access-control';
  * para /meu-painel nas ações.
  */
 export function PendencyAlertModal() {
+  // `data` só para o licenciamento de módulos (terminalModules — Fase 5d)
   const { user, data } = useAuth();
+  const { data: trainings = [] } = useTrainings();
+  const { data: userTrainings = [] } = useTrainingAssignments();
+  const { data: userEPIs = [] } = useEpiDeliveries();
+  const { data: complianceItems = [] } = useCompliance();
   const navigate = useNavigate();
   const [alertDismissed, setAlertDismissed] = useState(false);
 
   if (!user) return null;
 
-  // === Pendency calculation (herdado do PAESystem) ===
+  // === Pendency calculation (dados reais da API — Fase 5b) ===
   const now = new Date();
   const soonThreshold = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   const { safetySubModules: activeSubs } = getUserActiveConfig(user, data);
   const pendingTrainings = activeSubs.includes('trainings')
-    ? data.trainings.filter(t => t.mandatory && !data.userTrainings.some(ut => ut.userId === user.id && ut.trainingId === t.id && new Date(ut.expiryDate) >= now)).length
+    ? trainings.filter(t => t.mandatory && !userTrainings.some(ut => ut.userId === user.id && ut.trainingId === t.id && new Date(ut.expiryDate) >= now)).length
     : 0;
   const expiredTrainings = activeSubs.includes('trainings')
-    ? data.userTrainings.filter(ut => ut.userId === user.id && new Date(ut.expiryDate) < now).length
+    ? userTrainings.filter(ut => ut.userId === user.id && new Date(ut.expiryDate) < now).length
     : 0;
   const expiredEPIs = activeSubs.includes('epis')
-    ? data.userEPIs.filter(ue => ue.userId === user.id && ue.usageStatus !== 'substituido' && ue.usageStatus !== 'devolvido' && ue.expiryDate && new Date(ue.expiryDate) < now).length
+    ? userEPIs.filter(ue => ue.userId === user.id && ue.usageStatus !== 'substituido' && ue.usageStatus !== 'devolvido' && ue.expiryDate && new Date(ue.expiryDate) < now).length
     : 0;
   const soonEPIs = activeSubs.includes('epis')
-    ? data.userEPIs.filter(ue => ue.userId === user.id && ue.usageStatus !== 'substituido' && ue.usageStatus !== 'devolvido' && ue.expiryDate && new Date(ue.expiryDate) >= now && new Date(ue.expiryDate) <= soonThreshold).length
+    ? userEPIs.filter(ue => ue.userId === user.id && ue.usageStatus !== 'substituido' && ue.usageStatus !== 'devolvido' && ue.expiryDate && new Date(ue.expiryDate) >= now && new Date(ue.expiryDate) <= soonThreshold).length
     : 0;
   const ncCompliance = activeSubs.includes('compliance')
-    ? (data.complianceItems || []).filter(ci => ci.status === 'nao_conforme' && (ci.userId === user.id || ci.responsible === user.name)).length
+    ? complianceItems.filter(ci => ci.status === 'nao_conforme' && (ci.userId === user.id || ci.responsible === user.name)).length
     : 0;
   const totalPendencies = pendingTrainings + expiredTrainings + expiredEPIs + soonEPIs + ncCompliance;
   const showPendencyAlert = totalPendencies > 0 && !alertDismissed;

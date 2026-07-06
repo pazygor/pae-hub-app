@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
+import { useEpis, useEpiDeliveries, useEpiMutations, useUsers, useTerminals, usePermissions } from '@/api';
 import { EPI, UserEPI, EPIType, EPI_TYPE_LABELS, EPIUsageStatus, EPI_USAGE_LABELS } from '@/lib/types';
 import { canManage, canViewManagement, getVisibleTerminalIds, isTerminalLocked } from '@/lib/access-control';
 import {
@@ -95,7 +97,14 @@ const TIMELINE_ICONS: Record<string, { icon: typeof CalendarDays; color: string 
 const EPI_TYPES = Object.entries(EPI_TYPE_LABELS) as [EPIType, string][];
 
 export function EpisPage() {
-  const { user, data, setData } = useAuth();
+  const { user } = useAuth();
+  const { data: epis = [] } = useEpis();
+  const { data: userEPIs = [] } = useEpiDeliveries();
+  const { data: users = [] } = useUsers();
+  const { data: terminals = [] } = useTerminals();
+  const { data: permissions = [] } = usePermissions();
+  const { create, remove: removeEpiMut, deliver, updateDelivery, removeDelivery } = useEpiMutations();
+  const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
   const [showForm, setShowForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
@@ -107,8 +116,14 @@ export function EpisPage() {
   const [replaceForm, setReplaceForm] = useState<{ userEpiId: string; epiId: string; userId: string } | null>(null);
   const [replaceData, setReplaceData] = useState({ deliveryDate: '', expiryDate: '', responsible: '', observations: '' });
 
-  // Terminal isolation
-  const visibleTerminalIds = useMemo(() => getVisibleTerminalIds(user, data), [user, data]);
+  // Terminal isolation (fonte: API)
+  const visibleTerminalIds = useMemo(() => {
+    if (!user) return [];
+    if (user.role === 'admin') return terminals.map(t => t.id);
+    if (user.role === 'terminal') return user.linkId ? [user.linkId] : [];
+    if (user.role === 'entity') return permissions.find(p => p.entityId === user.linkId)?.terminalIds || [];
+    return [];
+  }, [user, terminals, permissions]);
   const terminalLocked = isTerminalLocked(user);
 
   // Filters — auto-lock terminal for non-admin users
@@ -121,16 +136,16 @@ export function EpisPage() {
 
   // Active assignments — scoped to visible terminals
   const classified = useMemo(() => {
-    return data.userEPIs.map(ue => {
-      const u = data.users.find(u => u.id === ue.userId);
-      const epi = data.epis.find(e => e.id === ue.epiId);
+    return userEPIs.map(ue => {
+      const u = users.find(u => u.id === ue.userId);
+      const epi = epis.find(e => e.id === ue.epiId);
       return { ...ue, status: getStatus(ue.expiryDate), user: u, epi };
     }).filter(ue => {
       // Terminal isolation: only show assignments for users in visible terminals
       if (!ue.user) return false;
       return visibleTerminalIds.includes(ue.user.linkId || '');
     });
-  }, [data, visibleTerminalIds]);
+  }, [userEPIs, users, epis, visibleTerminalIds]);
 
   const activeAssignments = useMemo(() => classified.filter(c => c.usageStatus !== 'substituido' && c.usageStatus !== 'devolvido'), [classified]);
 
@@ -154,8 +169,8 @@ export function EpisPage() {
   // Users without any active EPI
   const usersWithoutEPI = useMemo(() => {
     const usersWithActive = new Set(activeAssignments.map(a => a.userId));
-    return data.users.filter(u => !usersWithActive.has(u.id) && (u.role === 'terminal' || u.role === 'entity'));
-  }, [data.users, activeAssignments]);
+    return users.filter(u => !usersWithActive.has(u.id) && (u.role === 'terminal' || u.role === 'entity'));
+  }, [users, activeAssignments]);
 
   // Charts
   const donutData = [
@@ -164,8 +179,8 @@ export function EpisPage() {
     { name: 'Atenção', value: soonCount, color: COLORS.soon },
   ].filter(d => d.value > 0);
 
-  const barData = data.terminals.map(t => {
-    const tUsers = data.users.filter(u => u.linkId === t.id).map(u => u.id);
+  const barData = terminals.map(t => {
+    const tUsers = users.filter(u => u.linkId === t.id).map(u => u.id);
     const tClassified = activeAssignments.filter(c => tUsers.includes(c.userId));
     return {
       name: t.name.length > 14 ? t.name.substring(0, 14) + '…' : t.name,
@@ -188,7 +203,7 @@ export function EpisPage() {
     return Array.from(map.entries())
       .map(([userId, items]) => ({
         userId,
-        user: data.users.find(u => u.id === userId),
+        user: users.find(u => u.id === userId),
         items,
         activeItems: items.filter(i => i.usageStatus !== 'substituido' && i.usageStatus !== 'devolvido'),
         hasExpired: items.some(i => i.status === 'expired' && i.usageStatus !== 'substituido'),
@@ -199,106 +214,107 @@ export function EpisPage() {
         if (a.hasSoon !== b.hasSoon) return a.hasSoon ? -1 : 1;
         return (a.user?.name || '').localeCompare(b.user?.name || '');
       });
-  }, [filteredAssignments, data.users]);
+  }, [filteredAssignments, users]);
 
   // Actions
   const addEPI = () => {
     if (!form.name) { setFormError('Informe o nome do EPI.'); return; }
     setFormError('');
-    setFormError('');
-    const e: EPI = {
-      id: `epi${Date.now()}`, name: form.name, description: form.description,
-      epiType: form.epiType, expiryDate: form.expiryDate || null,
-      terminalId: form.terminalId || undefined,
-    };
-    setData(d => ({ ...d, epis: [...d.epis, e] }));
-    setForm({ name: '', description: '', epiType: 'outro', expiryDate: '', terminalId: '' });
-    setShowForm(false);
+    create.mutate(
+      {
+        name: form.name, description: form.description,
+        epiType: form.epiType, expiryDate: form.expiryDate || undefined,
+        terminalId: form.terminalId || undefined,
+      },
+      {
+        onSuccess: () => {
+          setForm({ name: '', description: '', epiType: 'outro', expiryDate: '', terminalId: '' });
+          setShowForm(false);
+          toast.success('EPI cadastrado');
+        },
+        onError,
+      },
+    );
   };
 
-  // Batch assign EPI to multiple users
+  // Batch assign — o back aplica defaults (hoje / validade do EPI) e pula entregas ativas
   const batchAssignEPI = (epiId: string, userIds: string[]) => {
     if (userIds.length === 0) return;
-    const today = new Date().toISOString().split('T')[0];
-    const epi = data.epis.find(e => e.id === epiId);
-    const newUes: UserEPI[] = userIds
-      .filter(uid => !data.userEPIs.some(ue => ue.epiId === epiId && ue.userId === uid && ue.usageStatus !== 'substituido' && ue.usageStatus !== 'devolvido'))
-      .map((uid, i) => ({
-        id: `ue${Date.now()}${i}`, epiId, userId: uid,
-        deliveryDate: today, expiryDate: epi?.expiryDate || null,
-        responsible: user?.name || '', observations: '',
-        usageStatus: 'em_uso' as EPIUsageStatus,
-      }));
-    if (newUes.length > 0) {
-      setData(d => ({ ...d, userEPIs: [...d.userEPIs, ...newUes] }));
-    }
-    setBatchAssign(null);
+    deliver.mutate({ id: epiId, input: { userIds } }, {
+      onSuccess: () => { setBatchAssign(null); toast.success('EPI entregue'); },
+      onError,
+    });
   };
 
   const removeEPI = (id: string) => {
-    setData(d => ({ ...d, epis: d.epis.filter(e => e.id !== id), userEPIs: d.userEPIs.filter(ue => ue.epiId !== id) }));
+    if (!confirm('Remover este EPI e suas entregas?')) return;
+    removeEpiMut.mutate(id, { onSuccess: () => toast.success('EPI removido'), onError });
   };
 
   const assignEPI = (epiId: string) => {
     if (!assignForm.userId || !assignForm.deliveryDate) return;
-    const epi = data.epis.find(e => e.id === epiId);
-    let expiryDate = assignForm.expiryDate || null;
-    if (!expiryDate && epi?.expiryDate) {
-      expiryDate = epi.expiryDate;
-    }
-    const ue: UserEPI = {
-      id: `ue${Date.now()}`, epiId, userId: assignForm.userId,
-      deliveryDate: assignForm.deliveryDate, expiryDate,
-      responsible: assignForm.responsible, observations: assignForm.observations,
-      usageStatus: 'em_uso',
-    };
-    setData(d => ({ ...d, userEPIs: [...d.userEPIs, ue] }));
-    setAssignForm({ userId: '', deliveryDate: '', expiryDate: '', responsible: '', observations: '' });
-    setShowAssignForm(null);
+    deliver.mutate(
+      {
+        id: epiId,
+        input: {
+          userIds: [assignForm.userId],
+          deliveryDate: assignForm.deliveryDate,
+          expiryDate: assignForm.expiryDate || undefined,
+          responsible: assignForm.responsible || undefined,
+          observations: assignForm.observations || undefined,
+        },
+      },
+      {
+        onSuccess: () => {
+          setAssignForm({ userId: '', deliveryDate: '', expiryDate: '', responsible: '', observations: '' });
+          setShowAssignForm(null);
+        },
+        onError,
+      },
+    );
   };
 
   const removeUserEPI = (id: string) => {
-    setData(d => ({ ...d, userEPIs: d.userEPIs.filter(ue => ue.id !== id) }));
+    removeDelivery.mutate(id, { onError });
   };
 
   const changeUsageStatus = (id: string, newStatus: EPIUsageStatus) => {
-    setData(d => ({
-      ...d,
-      userEPIs: d.userEPIs.map(ue =>
-        ue.id === id
-          ? { ...ue, usageStatus: newStatus, ...(newStatus === 'devolvido' || newStatus === 'substituido' ? { returnDate: new Date().toISOString().split('T')[0] } : {}) }
-          : ue
-      ),
-    }));
+    // O back grava returnDate quando devolvido/substituido
+    updateDelivery.mutate({ deliveryId: id, input: { usageStatus: newStatus } }, { onError });
   };
 
   const replaceEPI = () => {
     if (!replaceForm || !replaceData.deliveryDate) return;
     const { userEpiId, epiId, userId } = replaceForm;
-    const epi = data.epis.find(e => e.id === epiId);
-    let expiryDate = replaceData.expiryDate || null;
-    if (!expiryDate && epi?.expiryDate) expiryDate = epi.expiryDate;
-
-    const newUe: UserEPI = {
-      id: `ue${Date.now()}`, epiId, userId,
-      deliveryDate: replaceData.deliveryDate, expiryDate,
-      responsible: replaceData.responsible, observations: replaceData.observations,
-      usageStatus: 'em_uso',
-    };
-
-    setData(d => ({
-      ...d,
-      userEPIs: [
-        ...d.userEPIs.map(ue =>
-          ue.id === userEpiId
-            ? { ...ue, usageStatus: 'substituido' as EPIUsageStatus, returnDate: new Date().toISOString().split('T')[0] }
-            : ue
-        ),
-        newUe,
-      ],
-    }));
-    setReplaceForm(null);
-    setReplaceData({ deliveryDate: '', expiryDate: '', responsible: '', observations: '' });
+    // 1) fecha a entrega antiga como substituída (back grava returnDate);
+    // 2) cria a nova entrega em uso.
+    updateDelivery.mutate(
+      { deliveryId: userEpiId, input: { usageStatus: 'substituido' } },
+      {
+        onSuccess: () =>
+          deliver.mutate(
+            {
+              id: epiId,
+              input: {
+                userIds: [userId],
+                deliveryDate: replaceData.deliveryDate,
+                expiryDate: replaceData.expiryDate || undefined,
+                responsible: replaceData.responsible || undefined,
+                observations: replaceData.observations || undefined,
+              },
+            },
+            {
+              onSuccess: () => {
+                setReplaceForm(null);
+                setReplaceData({ deliveryDate: '', expiryDate: '', responsible: '', observations: '' });
+                toast.success('EPI substituído');
+              },
+              onError,
+            },
+          ),
+        onError,
+      },
+    );
   };
 
   if (!user || (user.role !== 'admin' && user.role !== 'terminal')) return <p className="text-muted-foreground text-sm">Acesso restrito.</p>;
@@ -330,7 +346,7 @@ export function EpisPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <div className="bg-card border rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Total EPIs</p>
-          <p className="text-xl font-mono font-bold text-foreground">{data.epis.length}</p>
+          <p className="text-xl font-mono font-bold text-foreground">{epis.length}</p>
         </div>
         <div className="bg-card border border-success/20 rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Em Uso</p>
@@ -431,7 +447,7 @@ export function EpisPage() {
             <select value={filterTerminal} onChange={e => setFilterTerminal(e.target.value)}
               className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
               <option value="all">Todos os terminais</option>
-              {data.terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           )}
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -467,7 +483,7 @@ export function EpisPage() {
               <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))}
                 className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground">
                 <option value="">Selecione o terminal...</option>
-                {data.terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
             <div>
@@ -533,7 +549,7 @@ export function EpisPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             {usersWithoutEPI.map(u => {
-              const terminal = u.linkId ? data.terminals.find(t => t.id === u.linkId) : null;
+              const terminal = u.linkId ? terminals.find(t => t.id === u.linkId) : null;
               return (
                 <div key={u.id} className="flex items-center gap-2 bg-card border rounded-lg px-3 py-1.5">
                   <div className="w-6 h-6 rounded-full bg-destructive/10 flex items-center justify-center text-[10px] font-bold text-destructive">{u.name.charAt(0)}</div>
@@ -556,7 +572,7 @@ export function EpisPage() {
           )}
           {userGroups.map(({ userId, user: u, items, activeItems, hasExpired, hasSoon }) => {
             const isExpanded = expandedUser === userId;
-            const terminal = u?.linkId ? data.terminals.find(t => t.id === u.linkId) : null;
+            const terminal = u?.linkId ? terminals.find(t => t.id === u.linkId) : null;
             const expCount = activeItems.filter(i => i.status === 'expired').length;
             const soonC = activeItems.filter(i => i.status === 'soon').length;
 
@@ -702,7 +718,7 @@ export function EpisPage() {
       {/* ===== EPI VIEW ===== */}
       {viewMode === 'epi' && (
         <div className="space-y-4">
-          {data.epis
+          {epis
             .filter(epi => filterType === 'all' || epi.epiType === filterType)
             .map(epi => {
               const assignments = filteredAssignments.filter(a => a.epiId === epi.id);
@@ -718,7 +734,7 @@ export function EpisPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                          <span className="text-sm font-bold text-foreground">{epi.name}</span>
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{EPI_TYPE_LABELS[epi.epiType]}</span>
-                          {epi.terminalId && (() => { const t = data.terminals.find(t => t.id === epi.terminalId); return t ? <span className="text-[9px] px-1.5 py-0.5 bg-accent text-accent-foreground rounded font-bold">{t.name}</span> : null; })()}
+                          {epi.terminalId && (() => { const t = terminals.find(t => t.id === epi.terminalId); return t ? <span className="text-[9px] px-1.5 py-0.5 bg-accent text-accent-foreground rounded font-bold">{t.name}</span> : null; })()}
                           {!epi.terminalId && <span className="text-[9px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded font-bold">GLOBAL</span>}
                           {epi.expiryDate && <span className="text-[9px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded font-bold">Validade: {fmtDate(epi.expiryDate)}</span>}
                         </div>
@@ -782,7 +798,7 @@ export function EpisPage() {
               );
             })}
 
-          {data.epis.length === 0 && (
+          {epis.length === 0 && (
             <div className="text-center py-12 text-muted-foreground text-sm">Nenhum EPI cadastrado.</div>
           )}
         </div>
@@ -794,11 +810,11 @@ export function EpisPage() {
           open={!!batchAssign}
           onClose={() => setBatchAssign(null)}
           title="Entregar EPI"
-          description={`Selecione os usuários que receberão o EPI "${data.epis.find(e => e.id === batchAssign)?.name || ''}".`}
+          description={`Selecione os usuários que receberão o EPI "${epis.find(e => e.id === batchAssign)?.name || ''}".`}
           confirmLabel="Confirmar Entrega"
-          users={data.users}
-          terminals={data.terminals}
-          alreadyAssignedIds={new Set(data.userEPIs.filter(ue => ue.epiId === batchAssign && ue.usageStatus !== 'substituido' && ue.usageStatus !== 'devolvido').map(ue => ue.userId))}
+          users={users}
+          terminals={terminals}
+          alreadyAssignedIds={new Set(userEPIs.filter(ue => ue.epiId === batchAssign && ue.usageStatus !== 'substituido' && ue.usageStatus !== 'devolvido').map(ue => ue.userId))}
           onConfirm={(userIds) => batchAssignEPI(batchAssign, userIds)}
         />
       )}

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAuth } from '@/lib/auth-context';
+import { useUsers, useTrainings, useTrainingAssignments, useEpis, useEpiDeliveries, useTerminals } from '@/api';
 import { StatCard } from '@/components/common/StatCard';
 import { GraduationCap, HardHat, AlertTriangle, Users, ClipboardCheck, Clock, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
@@ -66,7 +66,14 @@ function getUserSafetyStatus(
 }
 
 export function SafetyOverview({ hasTrainings = true, hasEPIs = true, hasCompliance = true, onNavigate }: Props) {
-  const { data } = useAuth();
+  // Dados reais da API (Fase 5b), no mesmo shape que o componente já consumia
+  const { data: users = [] } = useUsers();
+  const { data: trainings = [] } = useTrainings();
+  const { data: userTrainings = [] } = useTrainingAssignments();
+  const { data: epis = [] } = useEpis();
+  const { data: userEPIs = [] } = useEpiDeliveries();
+  const { data: terminals = [] } = useTerminals();
+  const data = { users, trainings, userTrainings, epis, userEPIs, terminals };
   const now = new Date();
   const soon = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 

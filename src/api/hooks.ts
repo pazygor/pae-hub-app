@@ -15,6 +15,8 @@ import { dashboardApi } from './dashboard';
 import { entityNotificationsApi } from './entity-notifications';
 import { chatApi } from './chat';
 import { risksApi, RiskInput, plansApi, PlanInput, mapElementsApi, MapElementInput, documentsApi, DocumentInput } from './pae-resources';
+import { trainingsApi, TrainingInput, AssignTrainingInput, episApi, EpiInput, DeliverEpiInput, complianceApi, ComplianceInput } from './safety';
+import { EPIUsageStatus } from '@/lib/types';
 
 const TERMINALS_KEY = ['terminals'];
 const USERS_KEY = ['users'];
@@ -220,6 +222,77 @@ export function useDocumentMutations() {
     create: useMutation({ mutationFn: (input: DocumentInput) => documentsApi.create(input), onSuccess }),
     update: useMutation({ mutationFn: (v: { id: string; input: Partial<DocumentInput> }) => documentsApi.update(v.id, v.input), onSuccess }),
     remove: useMutation({ mutationFn: (id: string) => documentsApi.remove(id), onSuccess }),
+  };
+}
+
+/* ── Fase 5b — Segurança Operacional ───────────────────────────────────────── */
+
+const TRAININGS_KEY = ['trainings'];
+const TRAINING_ASSIGNMENTS_KEY = ['training-assignments'];
+const EPIS_KEY = ['epis'];
+const EPI_DELIVERIES_KEY = ['epi-deliveries'];
+const COMPLIANCE_KEY = ['compliance'];
+
+export function useTrainings() {
+  return useQuery({ queryKey: TRAININGS_KEY, queryFn: trainingsApi.list });
+}
+
+export function useTrainingAssignments() {
+  return useQuery({ queryKey: TRAINING_ASSIGNMENTS_KEY, queryFn: trainingsApi.assignments });
+}
+
+export function useTrainingMutations() {
+  const qc = useQueryClient();
+  const onSuccess = () => {
+    qc.invalidateQueries({ queryKey: TRAININGS_KEY });
+    qc.invalidateQueries({ queryKey: TRAINING_ASSIGNMENTS_KEY });
+  };
+  return {
+    create: useMutation({ mutationFn: (input: TrainingInput) => trainingsApi.create(input), onSuccess }),
+    remove: useMutation({ mutationFn: (id: string) => trainingsApi.remove(id), onSuccess }),
+    assign: useMutation({ mutationFn: (v: { id: string; input: AssignTrainingInput }) => trainingsApi.assign(v.id, v.input), onSuccess }),
+    removeAssignment: useMutation({ mutationFn: (assignmentId: string) => trainingsApi.removeAssignment(assignmentId), onSuccess }),
+  };
+}
+
+export function useEpis() {
+  return useQuery({ queryKey: EPIS_KEY, queryFn: episApi.list });
+}
+
+export function useEpiDeliveries() {
+  return useQuery({ queryKey: EPI_DELIVERIES_KEY, queryFn: episApi.deliveries });
+}
+
+export function useEpiMutations() {
+  const qc = useQueryClient();
+  const onSuccess = () => {
+    qc.invalidateQueries({ queryKey: EPIS_KEY });
+    qc.invalidateQueries({ queryKey: EPI_DELIVERIES_KEY });
+  };
+  return {
+    create: useMutation({ mutationFn: (input: EpiInput) => episApi.create(input), onSuccess }),
+    remove: useMutation({ mutationFn: (id: string) => episApi.remove(id), onSuccess }),
+    deliver: useMutation({ mutationFn: (v: { id: string; input: DeliverEpiInput }) => episApi.deliver(v.id, v.input), onSuccess }),
+    updateDelivery: useMutation({
+      mutationFn: (v: { deliveryId: string; input: { usageStatus?: EPIUsageStatus; expiryDate?: string; observations?: string } }) =>
+        episApi.updateDelivery(v.deliveryId, v.input),
+      onSuccess,
+    }),
+    removeDelivery: useMutation({ mutationFn: (deliveryId: string) => episApi.removeDelivery(deliveryId), onSuccess }),
+  };
+}
+
+export function useCompliance() {
+  return useQuery({ queryKey: COMPLIANCE_KEY, queryFn: complianceApi.list });
+}
+
+export function useComplianceMutations() {
+  const qc = useQueryClient();
+  const onSuccess = () => qc.invalidateQueries({ queryKey: COMPLIANCE_KEY });
+  return {
+    create: useMutation({ mutationFn: (input: ComplianceInput) => complianceApi.create(input), onSuccess }),
+    update: useMutation({ mutationFn: (v: { id: string; input: Partial<ComplianceInput> }) => complianceApi.update(v.id, v.input), onSuccess }),
+    remove: useMutation({ mutationFn: (id: string) => complianceApi.remove(id), onSuccess }),
   };
 }
 
