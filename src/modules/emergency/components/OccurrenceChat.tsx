@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
-import { ChatMessage } from '@/lib/types';
 import { MessageSquare, Send, User, Shield, Ship } from 'lucide-react';
+import { useOccurrenceChat, useChatMutations } from '@/api';
 
 interface Props {
   occurrenceId: string;
@@ -35,13 +36,12 @@ const roleLabel = (role: string) => {
 };
 
 export function OccurrenceChat({ occurrenceId }: Props) {
-  const { user, data, setData } = useAuth();
+  const { user } = useAuth();
+  // Chat real via API (ChatMessage — DER); tempo real via RealtimeBridge
+  const { data: messages = [] } = useOccurrenceChat(occurrenceId);
+  const { send } = useChatMutations(occurrenceId);
   const [message, setMessage] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  const messages = (data.chatMessages ?? [])
-    .filter(m => m.occurrenceId === occurrenceId)
-    .sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -53,21 +53,11 @@ export function OccurrenceChat({ occurrenceId }: Props) {
 
   const sendMessage = () => {
     const text = message.trim();
-    if (!text) return;
-    const newMsg: ChatMessage = {
-      id: `msg${Date.now()}`,
-      occurrenceId,
-      userId: user.id,
-      userName: user.name,
-      userRole: user.role,
-      message: text,
-      dateTime: new Date().toISOString(),
-    };
-    setData(d => ({
-      ...d,
-      chatMessages: [...(d.chatMessages ?? []), newMsg],
-    }));
-    setMessage('');
+    if (!text || send.isPending) return;
+    send.mutate(text, {
+      onSuccess: () => setMessage(''),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao enviar mensagem'),
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

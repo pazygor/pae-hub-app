@@ -1,13 +1,15 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { situationRoomPath } from '@/lib/nav-config';
-import { Occurrence, EntityNotification, EntityNotificationStatus } from '@/lib/types';
+import { Occurrence, EntityNotificationStatus } from '@/lib/types';
 import {
   Activity, Clock, Shield, Users, CheckCircle, AlertTriangle, Siren,
   ChevronDown, ChevronRight, FileText, Timer, Radio, Eye
 } from 'lucide-react';
 import { generateIncidentPDF } from '../components/generateIncidentPDF';
+import { useOccurrences, useTerminals, useEntities, usePermissions, useEntityNotifications, useEntityNotificationMutations } from '@/api';
 
 /* ── helpers ──────────────────────────────────────────────── */
 
@@ -37,21 +39,29 @@ const statusColor: Record<EntityNotificationStatus, string> = {
   'Em Atendimento': 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30',
 };
 
-const statusOrder: EntityNotificationStatus[] = ['Notificada', 'Confirmada', 'Em Atendimento'];
+// Progressão oficial (Funcional §4.3): Notificada → Em Atendimento → Confirmada
+const statusOrder: EntityNotificationStatus[] = ['Notificada', 'Em Atendimento', 'Confirmada'];
 
 export function OrchestrationPage() {
   const navigate = useNavigate();
   const openSituationRoom = (id: string) => navigate(situationRoomPath(id));
-  const { user, data, setData } = useAuth();
+  // `data` só para as partes do PDF ainda mockadas (planos/riscos/docs — 5a)
+  const { user, data } = useAuth();
+  const { data: occurrences = [] } = useOccurrences();
+  const { data: terminals = [] } = useTerminals();
+  const { data: entities = [] } = useEntities();
+  const { data: permissions = [] } = usePermissions();
+  const { data: entityNotifications = [] } = useEntityNotifications();
+  const { setStatus } = useEntityNotificationMutations();
   const [expandedOcc, setExpandedOcc] = useState<string | null>(null);
 
   /* ── filtered occurrences (emergências ativas + resolvidas recentes) ── */
   const orchestratedOccs = useMemo(() => {
     if (!user) return [];
-    return data.occurrences
+    return occurrences
       .filter(o => o.status === 'emergência ativa' || o.status === 'resolvido' || o.status === 'em atendimento')
       .sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
-  }, [data.occurrences, user]);
+  }, [occurrences, user]);
 
   /* ── metrics for an occurrence ── */
   const getMetrics = (occ: Occurrence) => {
@@ -70,32 +80,24 @@ export function OrchestrationPage() {
 
   /* ── entity notifications for an occurrence ── */
   const getNotifications = (occId: string) =>
-    data.entityNotifications.filter(n => n.occurrenceId === occId);
+    entityNotifications.filter(n => n.occurrenceId === occId);
 
-  /* ── advance entity status ── */
+  /* ── advance entity status (Notificada → Em Atendimento → Confirmada) ── */
   const advanceEntityStatus = (notifId: string) => {
-    setData(d => ({
-      ...d,
-      entityNotifications: d.entityNotifications.map(n => {
-        if (n.id !== notifId) return n;
-        const now = new Date().toISOString();
-        const currentIdx = statusOrder.indexOf(n.status);
-        if (currentIdx < 0 || currentIdx >= statusOrder.length - 1) return n;
-        const nextStatus = statusOrder[currentIdx + 1];
-        return {
-          ...n,
-          status: nextStatus,
-          ...(nextStatus === 'Confirmada' ? { confirmedAt: now } : {}),
-          ...(nextStatus === 'Em Atendimento' ? { respondingAt: now } : {}),
-        };
-      }),
-    }));
+    const n = entityNotifications.find(x => x.id === notifId);
+    if (!n) return;
+    const currentIdx = statusOrder.indexOf(n.status);
+    if (currentIdx < 0 || currentIdx >= statusOrder.length - 1) return;
+    setStatus.mutate(
+      { id: notifId, status: statusOrder[currentIdx + 1] },
+      { onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao avançar status') },
+    );
   };
 
   /* ── global metrics ── */
-  const activeEmergencies = useMemo(() => data.occurrences.filter(o => o.status === 'emergência ativa').length, [data.occurrences]);
-  const totalNotifications = data.entityNotifications.length;
-  const confirmedNotifications = data.entityNotifications.filter(n => n.status === 'Confirmada' || n.status === 'Em Atendimento').length;
+  const activeEmergencies = useMemo(() => occurrences.filter(o => o.status === 'emergência ativa').length, [occurrences]);
+  const totalNotifications = entityNotifications.length;
+  const confirmedNotifications = entityNotifications.filter(n => n.status === 'Confirmada' || n.status === 'Em Atendimento').length;
   const avgResponseEvents = orchestratedOccs.length > 0
     ? Math.round(orchestratedOccs.reduce((sum, o) => sum + o.timeline.length, 0) / orchestratedOccs.length)
     : 0;
@@ -103,7 +105,8 @@ export function OrchestrationPage() {
   if (!user) return null;
 
   const handleGenerateReport = (occ: Occurrence) => {
-    generateIncidentPDF(occ, data);
+    // Dados reais para o PDF (planos/riscos/docs seguem mock até a Fase 5a)
+    generateIncidentPDF(occ, { ...data, terminals, entities, permissions });
   };
 
   return (
@@ -140,7 +143,7 @@ export function OrchestrationPage() {
         )}
 
         {orchestratedOccs.map(occ => {
-          const terminal = data.terminals.find(t => t.id === occ.terminalId);
+          const terminal = terminals.find(t => t.id === occ.terminalId);
           const metrics = getMetrics(occ);
           const notifs = getNotifications(occ.id);
           const isExpanded = expandedOcc === occ.id;
@@ -222,13 +225,13 @@ export function OrchestrationPage() {
                       </h4>
                       <div className="space-y-1.5">
                         {notifs.map(notif => {
-                          const entity = data.entities.find(e => e.id === notif.entityId);
+                          const entityName = notif.entityName || entities.find(e => e.id === notif.entityId)?.name;
                           const canAdvance = user.role === 'admin' && statusOrder.indexOf(notif.status) < statusOrder.length - 1;
                           return (
                             <div key={notif.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-secondary/30 border border-border">
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-xs font-bold text-foreground">{entity?.name || notif.entityId}</span>
+                                  <span className="text-xs font-bold text-foreground">{entityName || notif.entityId}</span>
                                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${statusColor[notif.status]}`}>
                                     {notif.status}
                                   </span>

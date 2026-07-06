@@ -10,4 +10,7 @@ export * from './permissions';
 export * from './notification-rules';
 export * from './occurrences';
 export * from './dashboard';
+export * from './entity-notifications';
+export * from './chat';
+export * from './realtime';
 export * from './hooks';

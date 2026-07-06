@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Terminal, Entity, OccurrenceStatus } from '@/lib/types';
+import { Terminal, Entity, OccurrenceStatus, EntityNotificationStatus } from '@/lib/types';
 import { terminalsApi } from './terminals';
 import { usersApi, UserInput } from './users';
 import { entitiesApi } from './entities';
@@ -12,6 +12,8 @@ import { permissionsApi } from './permissions';
 import { notificationRulesApi, NotificationRuleInput } from './notification-rules';
 import { occurrencesApi, OccurrenceInput, TimelineEventInput } from './occurrences';
 import { dashboardApi } from './dashboard';
+import { entityNotificationsApi } from './entity-notifications';
+import { chatApi } from './chat';
 
 const TERMINALS_KEY = ['terminals'];
 const USERS_KEY = ['users'];
@@ -155,6 +157,48 @@ export function useCopIndicators(terminalId?: string) {
     queryFn: () => dashboardApi.copIndicators(terminalId),
     refetchInterval: 30_000, // COP é "tempo quase-real" até o Socket.IO (Fase 3)
   });
+}
+
+/* ── Acionamento operacional (EntityNotification — Fase 3) ─────────────────── */
+
+const ENTITY_NOTIFICATIONS_KEY = ['entity-notifications'];
+
+export function useEntityNotifications(occurrenceId?: string) {
+  return useQuery({
+    queryKey: [...ENTITY_NOTIFICATIONS_KEY, occurrenceId ?? 'all'],
+    queryFn: () => entityNotificationsApi.list(occurrenceId),
+  });
+}
+
+export function useEntityNotificationMutations() {
+  const qc = useQueryClient();
+  return {
+    setStatus: useMutation({
+      mutationFn: (v: { id: string; status: EntityNotificationStatus }) =>
+        entityNotificationsApi.setStatus(v.id, v.status),
+      onSuccess: () => qc.invalidateQueries({ queryKey: ENTITY_NOTIFICATIONS_KEY }),
+    }),
+  };
+}
+
+/* ── Chat da ocorrência (ChatMessage — Fase 3) ─────────────────────────────── */
+
+export function useOccurrenceChat(occurrenceId: string | undefined) {
+  return useQuery({
+    queryKey: ['chat', occurrenceId],
+    queryFn: () => chatApi.list(occurrenceId!),
+    enabled: !!occurrenceId,
+  });
+}
+
+export function useChatMutations(occurrenceId: string | undefined) {
+  const qc = useQueryClient();
+  return {
+    send: useMutation({
+      mutationFn: (message: string) => chatApi.send(occurrenceId!, message),
+      onSuccess: () => qc.invalidateQueries({ queryKey: ['chat', occurrenceId] }),
+    }),
+  };
 }
 
 /* ── Acionamento de Entidades (regras) ─────────────────────────────────────── */

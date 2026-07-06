@@ -6,15 +6,14 @@ import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { SeverityLevel } from '@/lib/types';
 import { situationRoomPath } from '@/lib/nav-config';
-import { useTerminals, useEntities, useNotificationRules, useOccurrenceMutations, occurrencesApi } from '@/api';
+import { useTerminals, useOccurrenceMutations, occurrencesApi } from '@/api';
 
 /**
- * Provider do fluxo de "Disparar Emergência" (Funcional §4.1) — Fase 2:
+ * Provider do fluxo de "Disparar Emergência" (Funcional §4.1) — Fases 2+3:
  * cria a ocorrência REAL na API (status 'emergência ativa', INC-#### do back,
- * checklist de 8 passos semeado) e registra na timeline os eventos de disparo
- * e de acionamento das entidades conforme as NotificationRules reais (Fase 4).
- * O registro EntityNotification (Orquestração) chega na Fase 3 — aqui os
- * acionamentos ficam rastreados na timeline imutável.
+ * checklist de 8 passos semeado). O acionamento das entidades é AUTOMÁTICO no
+ * back (NotificationRule × Permission → EntityNotification + timeline) e chega
+ * ao front via Socket.IO (RealtimeBridge).
  */
 
 interface EmergencyDispatchContextType {
@@ -33,8 +32,6 @@ export function EmergencyDispatchProvider() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { data: terminals = [] } = useTerminals();
-  const { data: entities = [] } = useEntities();
-  const { data: notificationRules = [] } = useNotificationRules();
   const { create } = useOccurrenceMutations();
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({
@@ -82,22 +79,15 @@ export function EmergencyDispatchProvider() {
           navigate(situationRoomPath(occ.id));
           toast.success(`Emergência ${occ.incNumber} disparada`);
 
-          // Eventos complementares na timeline imutável (não bloqueiam a navegação)
-          const matchingRules = notificationRules.filter(r => r.occurrenceType === 'Emergência');
+          // Evento de plano na timeline imutável (o acionamento das entidades
+          // já foi registrado automaticamente pelo back na criação).
           try {
             await occurrencesApi.addTimeline(occ.id, {
               type: 'plano de emergência ativado',
               description: `Emergência disparada com severidade ${form.severity.toUpperCase()} — resposta imediata iniciada`,
             });
-            for (const rule of matchingRules) {
-              const entity = entities.find(e => e.id === rule.entityId);
-              await occurrencesApi.addTimeline(occ.id, {
-                type: 'entidade notificada',
-                description: `${entity?.name || rule.entityId} notificada automaticamente${entity?.contact ? ` via ${entity.contact}` : ''}${rule.mandatory ? ' [OBRIGATÓRIA]' : ''}`,
-              });
-            }
           } catch {
-            toast.error('Emergência criada, mas houve falha ao registrar eventos de acionamento');
+            toast.error('Emergência criada, mas houve falha ao registrar o evento de plano');
           }
         },
         onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao disparar emergência'),

@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { NotificationRule } from '@/lib/types';
 import { Bell, Plus, X, Shield, AlertTriangle } from 'lucide-react';
-import { useEntities, useNotificationRules, useNotificationRuleMutations } from '@/api';
+import { useEntities, useNotificationRules, useNotificationRuleMutations, useEntityNotifications } from '@/api';
 
 const OCCURRENCE_TYPES = [
   'Princípio de incêndio', 'Vazamento', 'Emergência', 'Explosão',
@@ -11,10 +11,11 @@ const OCCURRENCE_TYPES = [
 ];
 
 export function NotificationRulesPage() {
-  // `data` só para o histórico (EntityNotification é operacional — Fase 3).
-  const { user, data } = useAuth();
+  const { user } = useAuth();
   const { data: entities = [] } = useEntities();
   const { data: notificationRules = [] } = useNotificationRules();
+  // Histórico real de acionamentos (EntityNotification — Fase 3)
+  const { data: entityNotifications = [] } = useEntityNotifications();
   const { create, setMandatory, remove } = useNotificationRuleMutations();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ occurrenceType: '', entityId: '', mandatory: false });
@@ -46,8 +47,6 @@ export function NotificationRulesPage() {
 
   const getEntityName = (id: string) => entities.find(e => e.id === id)?.name || id;
 
-  const entityNotifications = data.entityNotifications ?? []; // mock (Fase 3)
-
   // Group rules by occurrence type
   const groupedRules: Record<string, NotificationRule[]> = {};
   notificationRules.forEach(rule => {
@@ -60,10 +59,6 @@ export function NotificationRulesPage() {
     .sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime())
     .slice(0, 20);
 
-  const getOccurrenceLabel = (occId: string) => {
-    const occ = data.occurrences.find(o => o.id === occId);
-    return occ ? `${occ.incNumber} — ${occ.type}` : occId;
-  };
 
   return (
     <div className="space-y-6">
@@ -222,8 +217,8 @@ export function NotificationRulesPage() {
                 <tbody className="divide-y divide-border">
                   {recentNotifications.map(n => (
                     <tr key={n.id} className="hover:bg-secondary/30 transition-colors">
-                      <td className="px-4 py-3 text-foreground font-medium text-xs">{getOccurrenceLabel(n.occurrenceId)}</td>
-                      <td className="px-4 py-3 text-foreground text-xs">{getEntityName(n.entityId)}</td>
+                      <td className="px-4 py-3 text-foreground font-medium text-xs">{n.incNumber || n.occurrenceId}</td>
+                      <td className="px-4 py-3 text-foreground text-xs">{n.entityName || getEntityName(n.entityId)}</td>
                       <td className="px-4 py-3 text-muted-foreground text-xs font-mono">
                         {new Date(n.dateTime).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
                       </td>
