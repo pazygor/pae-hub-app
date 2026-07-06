@@ -1,9 +1,11 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
 
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { Terminal, MapElement, MapLayerType } from '@/lib/types';
 import { Ship, AlertTriangle, Siren, MapPin, X, Clock, Plus, Trash2, Layers, Flame, Droplets, Route, TriangleAlert, Flag, Thermometer } from 'lucide-react';
+import { useTerminals, usePermissions, useOccurrences, useRisks, useMapElements, useMapElementMutations } from '@/api';
 import 'leaflet/dist/leaflet.css';
 
 const LAYER_CONFIG: Record<MapLayerType, { label: string; color: string; icon: typeof Flame }> = {
@@ -17,7 +19,13 @@ const LAYER_CONFIG: Record<MapLayerType, { label: string; color: string; icon: t
 const ALL_LAYER_TYPES: MapLayerType[] = ['fire_equipment', 'hydrant', 'evacuation_route', 'risk_area', 'meeting_point'];
 
 export function EmergencyMapPage() {
-  const { user, data, setData } = useAuth();
+  const { user } = useAuth();
+  const { data: terminals = [] } = useTerminals();
+  const { data: permissions = [] } = usePermissions();
+  const { data: occurrences = [] } = useOccurrences();
+  const { data: risks = [] } = useRisks();
+  const { data: mapElements = [] } = useMapElements();
+  const { create: createElement, remove: removeElement } = useMapElementMutations();
   const [selected, setSelected] = useState<Terminal | null>(null);
   const [activeLayers, setActiveLayers] = useState<Set<MapLayerType>>(new Set());
   const [showLayerPanel, setShowLayerPanel] = useState(true);
@@ -33,37 +41,37 @@ export function EmergencyMapPage() {
 
   const visibleTerminalIds = useMemo(() => {
     if (!user) return [];
-    if (user.role === 'admin') return data.terminals.map(t => t.id);
+    if (user.role === 'admin') return terminals.map(t => t.id);
     if (user.role === 'terminal') return user.linkId ? [user.linkId] : [];
-    if (user.role === 'entity') return data.permissions.find(p => p.entityId === user.linkId)?.terminalIds || [];
+    if (user.role === 'entity') return permissions.find(p => p.entityId === user.linkId)?.terminalIds || [];
     return [];
-  }, [user, data]);
+  }, [user, terminals, permissions]);
 
-  const visibleTerminals = useMemo(() => data.terminals.filter(t => visibleTerminalIds.includes(t.id)), [data.terminals, visibleTerminalIds]);
+  const visibleTerminals = useMemo(() => terminals.filter(t => visibleTerminalIds.includes(t.id)), [terminals, visibleTerminalIds]);
 
   const visibleElements = useMemo(() =>
-    (data.mapElements || []).filter(el => visibleTerminalIds.includes(el.terminalId) && activeLayers.has(el.layerType)),
-    [data.mapElements, visibleTerminalIds, activeLayers]
+    mapElements.filter(el => visibleTerminalIds.includes(el.terminalId) && activeLayers.has(el.layerType)),
+    [mapElements, visibleTerminalIds, activeLayers]
   );
 
   const canEdit = user?.role === 'admin' || user?.role === 'terminal';
 
   const getMarkerColor = (terminalId: string): string => {
-    const activeOccurrences = data.occurrences.filter(o => o.terminalId === terminalId && o.status !== 'resolvido');
+    const activeOccurrences = occurrences.filter(o => o.terminalId === terminalId && o.status !== 'resolvido');
     if (activeOccurrences.length > 0) return 'hsl(0, 72%, 51%)';
-    const highRisks = data.risks.filter(r => r.terminalId === terminalId && r.level === 'alto');
+    const highRisks = risks.filter(r => r.terminalId === terminalId && r.level === 'alto');
     if (highRisks.length > 0) return 'hsl(38, 92%, 50%)';
     return 'hsl(142, 71%, 45%)';
   };
 
   const getTerminalStats = (terminalId: string) => {
-    const risks = data.risks.filter(r => r.terminalId === terminalId);
-    const occurrences = data.occurrences.filter(o => o.terminalId === terminalId);
-    const openOcc = occurrences.filter(o => o.status !== 'resolvido');
-    const lastOcc = occurrences.length > 0
-      ? occurrences.sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime())[0]
+    const tRisks = risks.filter(r => r.terminalId === terminalId);
+    const tOccurrences = occurrences.filter(o => o.terminalId === terminalId);
+    const openOcc = tOccurrences.filter(o => o.status !== 'resolvido');
+    const lastOcc = tOccurrences.length > 0
+      ? [...tOccurrences].sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime())[0]
       : null;
-    return { risks, openOcc, lastOcc, totalRisks: risks.length, highRisks: risks.filter(r => r.level === 'alto').length };
+    return { risks: tRisks, openOcc, lastOcc, totalRisks: tRisks.length, highRisks: tRisks.filter(r => r.level === 'alto').length };
   };
 
   const formatDate = (dt: string) => {
@@ -82,28 +90,36 @@ export function EmergencyMapPage() {
   const handleAddElement = () => {
     if (!addForm.name || !addForm.description) return;
     const terminalId = user?.role === 'terminal' ? user.linkId! : addForm.terminalId || visibleTerminalIds[0];
-    const terminal = data.terminals.find(t => t.id === terminalId);
+    const terminal = terminals.find(t => t.id === terminalId);
     if (!terminal) return;
     // Place near terminal with small random offset
     const offset = () => (Math.random() - 0.5) * 0.003;
-    const newEl: MapElement = {
-      id: `me${Date.now()}`,
-      name: addForm.name,
-      layerType: addForm.layerType,
-      lat: terminal.lat + offset(),
-      lng: terminal.lng + offset(),
-      description: addForm.description,
-      terminalId,
-    };
-    setData(d => ({ ...d, mapElements: [...(d.mapElements || []), newEl] }));
-    setActiveLayers(prev => new Set(prev).add(addForm.layerType));
-    setAddForm({ name: '', layerType: 'fire_equipment', description: '', terminalId: '' });
-    setShowAddForm(false);
+    createElement.mutate(
+      {
+        name: addForm.name,
+        layerType: addForm.layerType,
+        lat: terminal.lat + offset(),
+        lng: terminal.lng + offset(),
+        description: addForm.description,
+        terminalId,
+      },
+      {
+        onSuccess: () => {
+          setActiveLayers(prev => new Set(prev).add(addForm.layerType));
+          setAddForm({ name: '', layerType: 'fire_equipment', description: '', terminalId: '' });
+          setShowAddForm(false);
+          toast.success('Elemento adicionado ao mapa');
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao adicionar elemento'),
+      },
+    );
   };
 
   const handleDeleteElement = (id: string) => {
-    setData(d => ({ ...d, mapElements: (d.mapElements || []).filter(el => el.id !== id) }));
-    setSelectedElement(null);
+    removeElement.mutate(id, {
+      onSuccess: () => { setSelectedElement(null); toast.success('Elemento removido'); },
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao remover elemento'),
+    });
   };
 
   // Initialize map
@@ -137,7 +153,7 @@ export function EmergencyMapPage() {
       const bounds = L.latLngBounds(visibleTerminals.map(t => [t.lat, t.lng] as [number, number]));
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
     }
-  }, [visibleTerminals, data.occurrences, data.risks]);
+  }, [visibleTerminals, occurrences, risks]);
 
   // Update element markers
   useEffect(() => {
@@ -172,11 +188,11 @@ export function EmergencyMapPage() {
     }
     if (!showHeatmap) return;
 
-    const visibleRisks = data.risks.filter(r => visibleTerminalIds.includes(r.terminalId));
+    const visibleRisks = risks.filter(r => visibleTerminalIds.includes(r.terminalId));
     const points: { lat: number; lng: number; intensity: number }[] = [];
 
     visibleRisks.forEach(risk => {
-      const terminal = data.terminals.find(t => t.id === risk.terminalId);
+      const terminal = terminals.find(t => t.id === risk.terminalId);
       if (!terminal) return;
       const intensity = risk.level === 'alto' ? 1.0 : risk.level === 'médio' ? 0.5 : 0.2;
       const offset = () => (Math.random() - 0.5) * 0.002;
@@ -239,7 +255,7 @@ export function EmergencyMapPage() {
     const overlay = new CanvasHeatOverlay();
     overlay.addTo(map);
     heatLayerRef.current = overlay;
-  }, [showHeatmap, data.risks, visibleTerminalIds, data.terminals]);
+  }, [showHeatmap, risks, visibleTerminalIds, terminals]);
 
   if (!user) return null;
 
@@ -310,7 +326,7 @@ export function EmergencyMapPage() {
                     const cfg = LAYER_CONFIG[lt];
                     const Icon = cfg.icon;
                     const isActive = activeLayers.has(lt);
-                    const count = (data.mapElements || []).filter(el => visibleTerminalIds.includes(el.terminalId) && el.layerType === lt).length;
+                    const count = mapElements.filter(el => visibleTerminalIds.includes(el.terminalId) && el.layerType === lt).length;
                     return (
                       <button
                         key={lt}
@@ -347,7 +363,7 @@ export function EmergencyMapPage() {
                       <Thermometer size={13} className="text-primary" />
                       <span className="flex-1 text-left font-medium">Mapa de Calor</span>
                       <span className="text-[10px] font-mono bg-background px-1.5 py-0.5 rounded-full">
-                        {data.risks.filter(r => visibleTerminalIds.includes(r.terminalId)).length}
+                        {risks.filter(r => visibleTerminalIds.includes(r.terminalId)).length}
                       </span>
                     </button>
                     {showHeatmap && (
@@ -369,7 +385,7 @@ export function EmergencyMapPage() {
           {selectedElement ? (() => {
             const cfg = LAYER_CONFIG[selectedElement.layerType];
             const Icon = cfg.icon;
-            const terminal = data.terminals.find(t => t.id === selectedElement.terminalId);
+            const terminal = terminals.find(t => t.id === selectedElement.terminalId);
             const canDelete = user.role === 'admin' || (user.role === 'terminal' && user.linkId === selectedElement.terminalId);
             return (
               <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -410,7 +426,7 @@ export function EmergencyMapPage() {
             const stats = getTerminalStats(selected.id);
             const color = getMarkerColor(selected.id);
             const statusLabel = stats.openOcc.length > 0 ? 'Ocorrência Ativa' : stats.highRisks > 0 ? 'Risco Alto' : 'Normal';
-            const terminalElements = (data.mapElements || []).filter(el => el.terminalId === selected.id);
+            const terminalElements = mapElements.filter(el => el.terminalId === selected.id);
             return (
               <div className="bg-card border border-border rounded-xl overflow-hidden">
                 <div className="p-4 border-b border-border" style={{ borderTopWidth: 4, borderTopColor: color, borderTopStyle: 'solid' }}>

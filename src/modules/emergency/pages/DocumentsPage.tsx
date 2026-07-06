@@ -1,7 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
-import { PAEDocument, DocumentType } from '@/lib/types';
-import { Plus, FileText, Trash2, Filter, Download, Paperclip, X } from 'lucide-react';
+import { DocumentType } from '@/lib/types';
+import { Plus, FileText, Trash2, Filter, Download, Paperclip, X, Loader2 } from 'lucide-react';
+import { useDocuments, useDocumentMutations, useTerminals } from '@/api';
 
 const DOC_TYPES: DocumentType[] = [
   'Plano de Ação de Emergência',
@@ -24,51 +26,54 @@ const docTypeIcon = (t: DocumentType) => {
 };
 
 export function DocumentsPage() {
-  const { user, data, setData } = useAuth();
+  const { user } = useAuth();
+  const { data: allDocuments = [], isLoading, isError } = useDocuments();
+  const { data: terminals = [] } = useTerminals();
+  const { create, remove } = useDocumentMutations();
   const [showForm, setShowForm] = useState(false);
   const [filterType, setFilterType] = useState<string>('');
   const [filterTerminal, setFilterTerminal] = useState<string>('');
-  const [form, setForm] = useState({ title: '', docType: 'Plano de Ação de Emergência' as DocumentType, description: '', fileName: '' });
-
-  const visibleTerminalIds = useMemo(() => {
-    if (!user) return [];
-    if (user.role === 'admin') return data.terminals.map(t => t.id);
-    if (user.role === 'terminal') return user.linkId ? [user.linkId] : [];
-    if (user.role === 'entity') return data.permissions.find(p => p.entityId === user.linkId)?.terminalIds || [];
-    return [];
-  }, [user, data]);
+  const [form, setForm] = useState({ title: '', docType: 'Plano de Ação de Emergência' as DocumentType, description: '', fileName: '', terminalId: '' });
 
   if (!user) return null;
 
   const canUpload = user.role === 'admin' || user.role === 'terminal';
+  const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
 
-  let documents = data.documents.filter(d => visibleTerminalIds.includes(d.terminalId));
+  // O escopo por papel/terminal é do back; aqui só os filtros de tela.
+  let documents = allDocuments;
   if (filterType) documents = documents.filter(d => d.docType === filterType);
   if (filterTerminal) documents = documents.filter(d => d.terminalId === filterTerminal);
 
-  const visibleTerminals = data.terminals.filter(t => visibleTerminalIds.includes(t.id));
-  const getTerminalName = (id: string) => data.terminals.find(t => t.id === id)?.name || id;
+  const getTerminalName = (d: { terminalId: string }) =>
+    (d as any).terminalName || terminals.find(t => t.id === d.terminalId)?.name || d.terminalId;
+  const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR');
 
   const handleAdd = () => {
     if (!form.title || !form.fileName) return;
-    const terminalId = user.role === 'terminal' ? user.linkId! : visibleTerminalIds[0];
-    const newDoc: PAEDocument = {
-      id: `d${Date.now()}`,
-      title: form.title,
-      docType: form.docType,
-      description: form.description,
-      fileName: form.fileName,
-      terminalId,
-      uploadDate: new Date().toISOString().split('T')[0],
-      userName: user.name,
-    };
-    setData(d => ({ ...d, documents: [...d.documents, newDoc] }));
-    setForm({ title: '', docType: 'Plano de Ação de Emergência', description: '', fileName: '' });
-    setShowForm(false);
+    if (user.role === 'admin' && !form.terminalId) { toast.error('Selecione o terminal'); return; }
+    create.mutate(
+      {
+        title: form.title,
+        docType: form.docType,
+        description: form.description || undefined,
+        fileName: form.fileName,
+        terminalId: user.role === 'admin' ? form.terminalId : undefined,
+      },
+      {
+        onSuccess: () => {
+          setForm({ title: '', docType: 'Plano de Ação de Emergência', description: '', fileName: '', terminalId: '' });
+          setShowForm(false);
+          toast.success('Documento cadastrado');
+        },
+        onError,
+      },
+    );
   };
 
   const handleDelete = (id: string) => {
-    setData(d => ({ ...d, documents: d.documents.filter(doc => doc.id !== id) }));
+    if (!confirm('Excluir este documento?')) return;
+    remove.mutate(id, { onSuccess: () => toast.success('Documento excluído'), onError });
   };
 
   return (
@@ -92,10 +97,10 @@ export function DocumentsPage() {
           <option value="">Todos os tipos</option>
           {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
-        {visibleTerminals.length > 1 && (
+        {terminals.length > 1 && (
           <select value={filterTerminal} onChange={e => setFilterTerminal(e.target.value)} className="px-3 py-1.5 bg-background border border-input rounded-lg text-xs text-foreground">
             <option value="">Todos os terminais</option>
-            {visibleTerminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         )}
         {(filterType || filterTerminal) && (
@@ -104,7 +109,7 @@ export function DocumentsPage() {
         <span className="ml-auto text-[10px] text-muted-foreground font-mono-data">{documents.length} documento(s)</span>
       </div>
 
-      {/* Upload form */}
+      {/* Upload form (só metadados — upload real de arquivo na Fase 6) */}
       {showForm && canUpload && (
         <div className="bg-card border border-border rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between mb-1">
@@ -117,10 +122,18 @@ export function DocumentsPage() {
               {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
+          {user.role === 'admin' && (
+            <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground">
+              <option value="">Selecione o terminal...</option>
+              {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
           <textarea placeholder="Descrição" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground min-h-[50px]" />
           <input placeholder="Nome do arquivo (ex: plano-emergencia.pdf)" value={form.fileName} onChange={e => setForm(f => ({ ...f, fileName: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground" />
           <div className="flex gap-2">
-            <button onClick={handleAdd} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg">Salvar Documento</button>
+            <button onClick={handleAdd} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5">
+              {create.isPending && <Loader2 size={12} className="animate-spin" />} Salvar Documento
+            </button>
             <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg">Cancelar</button>
           </div>
         </div>
@@ -128,7 +141,11 @@ export function DocumentsPage() {
 
       {/* Document list */}
       <div className="space-y-2">
-        {documents.length === 0 && <p className="p-6 text-sm text-muted-foreground italic bg-card border border-border rounded-xl text-center">Nenhum documento encontrado.</p>}
+        {isLoading && (
+          <p className="p-6 text-sm text-muted-foreground bg-card border border-border rounded-xl text-center flex items-center justify-center gap-2"><Loader2 size={14} className="animate-spin" /> Carregando documentos...</p>
+        )}
+        {isError && !isLoading && <p className="p-6 text-sm text-primary bg-card border border-border rounded-xl text-center">Falha ao carregar documentos da API.</p>}
+        {!isLoading && !isError && documents.length === 0 && <p className="p-6 text-sm text-muted-foreground italic bg-card border border-border rounded-xl text-center">Nenhum documento encontrado.</p>}
         {documents.map(doc => (
           <div key={doc.id} className="bg-card border border-border rounded-xl p-4 flex items-start gap-4 hover:border-primary/20 transition-colors">
             <div className="w-10 h-10 bg-secondary rounded-lg flex items-center justify-center text-lg shrink-0">
@@ -144,8 +161,8 @@ export function DocumentsPage() {
                 <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                   <Paperclip size={10} /> {doc.fileName}
                 </span>
-                <span className="text-[10px] text-muted-foreground">{getTerminalName(doc.terminalId)}</span>
-                <span className="text-[10px] text-muted-foreground font-mono-data">{doc.uploadDate}</span>
+                <span className="text-[10px] text-muted-foreground">{getTerminalName(doc)}</span>
+                <span className="text-[10px] text-muted-foreground font-mono-data">{fmtDate(doc.uploadDate)}</span>
                 <span className="text-[10px] text-muted-foreground">{doc.userName}</span>
               </div>
             </div>

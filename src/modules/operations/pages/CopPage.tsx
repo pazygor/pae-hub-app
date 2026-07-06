@@ -6,18 +6,18 @@ import { Terminal, TimelineEvent } from '@/lib/types';
 import { Ship, AlertTriangle, Siren, Clock, CheckCircle, Shield, User, Bell, Play, RefreshCw, MapPin, Radio } from 'lucide-react';
 import { StatCard } from '@/components/common/StatCard';
 import { situationRoomPath } from '@/lib/nav-config';
-import { useOccurrences, useTerminals, usePermissions } from '@/api';
+import { useOccurrences, useTerminals, usePermissions, useRisks } from '@/api';
 import 'leaflet/dist/leaflet.css';
 
 export function CopPage() {
   const navigate = useNavigate();
   const openSituationRoom = (id: string) => navigate(situationRoomPath(id));
-  // `data` só para riscos (mock até a Fase 5a)
-  const { user, data } = useAuth();
-  // Ocorrências já chegam escopadas por papel/terminal do back
+  const { user } = useAuth();
+  // Ocorrências/riscos já chegam escopados por papel/terminal do back
   const { data: occurrences = [] } = useOccurrences();
   const { data: terminals = [] } = useTerminals();
   const { data: permissions = [] } = usePermissions();
+  const { data: allRisks = [] } = useRisks();
   const [selectedTerminal, setSelectedTerminal] = useState<Terminal | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -32,7 +32,7 @@ export function CopPage() {
   }, [user, terminals, permissions]);
 
   const visibleTerminals = useMemo(() => terminals.filter(t => visibleTerminalIds.includes(t.id)), [terminals, visibleTerminalIds]);
-  const risks = useMemo(() => data.risks.filter(r => visibleTerminalIds.includes(r.terminalId)), [data.risks, visibleTerminalIds]);
+  const risks = useMemo(() => allRisks.filter(r => visibleTerminalIds.includes(r.terminalId)), [allRisks, visibleTerminalIds]);
 
   const openOccurrences = occurrences.filter(o => o.status !== 'resolvido');
   const emergencyOccurrences = occurrences.filter(o => o.criticality === 'crítica' || o.status === 'emergência ativa');
@@ -59,7 +59,7 @@ export function CopPage() {
   const getMarkerColor = (terminalId: string): string => {
     const active = occurrences.filter(o => o.terminalId === terminalId && o.status !== 'resolvido');
     if (active.length > 0) return 'hsl(0, 72%, 51%)';
-    const high = data.risks.filter(r => r.terminalId === terminalId && r.level === 'alto');
+    const high = allRisks.filter(r => r.terminalId === terminalId && r.level === 'alto');
     if (high.length > 0) return 'hsl(38, 92%, 50%)';
     return 'hsl(142, 71%, 45%)';
   };
@@ -117,12 +117,12 @@ export function CopPage() {
     if (visibleTerminals.length > 0) {
       map.fitBounds(L.latLngBounds(visibleTerminals.map(t => [t.lat, t.lng] as [number, number])), { padding: [40, 40], maxZoom: 14 });
     }
-  }, [visibleTerminals, occurrences, data.risks]);
+  }, [visibleTerminals, occurrences, allRisks]);
 
   if (!user) return null;
 
   const selectedStats = selectedTerminal ? (() => {
-    const tRisks = data.risks.filter(r => r.terminalId === selectedTerminal.id);
+    const tRisks = allRisks.filter(r => r.terminalId === selectedTerminal.id);
     const tOcc = occurrences.filter(o => o.terminalId === selectedTerminal.id);
     return { risks: tRisks.length, highRisks: tRisks.filter(r => r.level === 'alto').length, openOcc: tOcc.filter(o => o.status !== 'resolvido').length, totalOcc: tOcc.length };
   })() : null;

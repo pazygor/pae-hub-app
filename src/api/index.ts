@@ -12,5 +12,6 @@ export * from './occurrences';
 export * from './dashboard';
 export * from './entity-notifications';
 export * from './chat';
+export * from './pae-resources';
 export * from './realtime';
 export * from './hooks';

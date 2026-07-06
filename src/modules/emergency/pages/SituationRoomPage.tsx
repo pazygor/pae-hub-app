@@ -13,7 +13,7 @@ import {
   Navigation, ExternalLink, Flag, Loader2
 } from 'lucide-react';
 import L from 'leaflet';
-import { useOccurrence, useOccurrenceMutations, useTerminals, useEntities, usePermissions } from '@/api';
+import { useOccurrence, useOccurrenceMutations, useTerminals, useEntities, usePermissions, useRisks, usePlans, useDocuments, useMapElements } from '@/api';
 
 const EVENT_TYPES: TimelineEventType[] = [
   'ocorrência registrada', 'equipe acionada', 'plano de emergência ativado',
@@ -90,12 +90,16 @@ export function SituationRoomPage() {
   // Volta no histórico quando possível; em deep-link direto, cai na lista.
   const canGoBack = (window.history.state?.idx ?? 0) > 0;
   const onBack = () => (canGoBack ? navigate(-1) : navigate('/ocorrencias'));
-  // `data` permanece só para o que ainda é mock: planos/riscos/docs/mapa (Fase 5a) e chat (Fase 3)
+  // `data` permanece só para o shape do AppData exigido pelo gerador de PDF
   const { user, data } = useAuth();
   const { data: occurrence, isLoading, isError } = useOccurrence(occurrenceId);
   const { data: terminals = [] } = useTerminals();
   const { data: entities = [] } = useEntities();
   const { data: permissions = [] } = usePermissions();
+  const { data: risks = [] } = useRisks();
+  const { data: plans = [] } = usePlans();
+  const { data: documents = [] } = useDocuments();
+  const { data: mapElements = [] } = useMapElements();
   const { setStatus, addTimeline, toggleChecklistItem } = useOccurrenceMutations();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -105,14 +109,14 @@ export function SituationRoomPage() {
   });
 
   const terminal = occurrence ? terminals.find(t => t.id === occurrence.terminalId) : undefined;
-  const terminalPlans = occurrence ? data.plans.filter(p => p.terminalId === occurrence.terminalId) : [];
+  const terminalPlans = occurrence ? plans.filter(p => p.terminalId === occurrence.terminalId) : [];
   const activePlan = terminalPlans.find(p => p.status === 'ativo');
   const hasPlanActivated = occurrence?.timeline.some(e => e.type === 'plano de emergência ativado') ?? false;
-  const terminalRisks = occurrence ? data.risks.filter(r => r.terminalId === occurrence.terminalId) : [];
-  const terminalDocs = occurrence ? data.documents.filter(d => d.terminalId === occurrence.terminalId) : [];
+  const terminalRisks = occurrence ? risks.filter(r => r.terminalId === occurrence.terminalId) : [];
+  const terminalDocs = occurrence ? documents.filter(d => d.terminalId === occurrence.terminalId) : [];
   const terminalElements = useMemo(
-    () => (occurrence ? data.mapElements.filter(el => el.terminalId === occurrence.terminalId) : []),
-    [data.mapElements, occurrence?.terminalId],
+    () => (occurrence ? mapElements.filter(el => el.terminalId === occurrence.terminalId) : []),
+    [mapElements, occurrence?.terminalId],
   );
   const timeline = occurrence ? [...(occurrence.timeline || [])].sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime()) : [];
   const checklist = occurrence?.checklist ?? [];
@@ -177,8 +181,8 @@ export function SituationRoomPage() {
 
   const canAct = user.role === 'admin' || user.role === 'terminal';
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
-  // Dados reais para o PDF (planos/riscos/docs seguem mock até a Fase 5a)
-  const pdfData = { ...data, terminals, entities, permissions };
+  // Dados reais para o PDF (Fase 5a completa: riscos/planos/docs também da API)
+  const pdfData = { ...data, terminals, entities, permissions, risks, plans, documents, mapElements };
 
   const formatDate = (dt: string) => {
     const d = new Date(dt);
@@ -393,7 +397,7 @@ export function SituationRoomPage() {
               </div>
 
               {(() => {
-                const meetingPoints = (data.mapElements || []).filter(
+                const meetingPoints = mapElements.filter(
                   el => el.terminalId === terminal.id && el.layerType === 'meeting_point'
                 );
                 return (

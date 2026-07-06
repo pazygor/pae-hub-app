@@ -9,7 +9,7 @@ import {
   ChevronDown, ChevronRight, FileText, Timer, Radio, Eye
 } from 'lucide-react';
 import { generateIncidentPDF } from '../components/generateIncidentPDF';
-import { useOccurrences, useTerminals, useEntities, usePermissions, useEntityNotifications, useEntityNotificationMutations } from '@/api';
+import { useOccurrences, useTerminals, useEntities, usePermissions, useEntityNotifications, useEntityNotificationMutations, useRisks, usePlans, useDocuments } from '@/api';
 
 /* ── helpers ──────────────────────────────────────────────── */
 
@@ -52,6 +52,9 @@ export function OrchestrationPage() {
   const { data: entities = [] } = useEntities();
   const { data: permissions = [] } = usePermissions();
   const { data: entityNotifications = [] } = useEntityNotifications();
+  const { data: risks = [] } = useRisks();
+  const { data: plans = [] } = usePlans();
+  const { data: documents = [] } = useDocuments();
   const { setStatus } = useEntityNotificationMutations();
   const [expandedOcc, setExpandedOcc] = useState<string | null>(null);
 
@@ -105,8 +108,8 @@ export function OrchestrationPage() {
   if (!user) return null;
 
   const handleGenerateReport = (occ: Occurrence) => {
-    // Dados reais para o PDF (planos/riscos/docs seguem mock até a Fase 5a)
-    generateIncidentPDF(occ, { ...data, terminals, entities, permissions });
+    // Dados reais para o PDF (Fase 5a completa: riscos/planos/docs também da API)
+    generateIncidentPDF(occ, { ...data, terminals, entities, permissions, risks, plans, documents });
   };
 
   return (

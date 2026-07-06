@@ -5,7 +5,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Legend, AreaChart, Area, CartesianGrid, RadialBarChart, RadialBar,
 } from 'recharts';
-import { useOccurrences, useTerminals, useEntities, usePermissions, useUsers } from '@/api';
+import { useOccurrences, useTerminals, useEntities, usePermissions, useUsers, useRisks, usePlans } from '@/api';
 
 const STATUS_COLORS = ['hsl(0, 72%, 51%)', 'hsl(38, 92%, 50%)', 'hsl(220, 70%, 55%)', 'hsl(142, 71%, 45%)'];
 const RISK_COLORS = ['hsl(142, 71%, 45%)', 'hsl(38, 92%, 50%)', 'hsl(0, 72%, 51%)'];
@@ -117,14 +117,15 @@ const CenterLabel = ({ viewBox, total }: any) => {
 };
 
 export function DashboardPage() {
-  // `data` só para riscos/planos (mock até a Fase 5a)
-  const { user, data } = useAuth();
+  const { user } = useAuth();
   // Ocorrências já chegam escopadas por papel/terminal do back
   const { data: occurrences = [] } = useOccurrences();
   const { data: terminals = [] } = useTerminals();
   const { data: entities = [] } = useEntities();
   const { data: permissions = [] } = usePermissions();
   const { data: users = [] } = useUsers(user?.role === 'admin');
+  const { data: allRisks = [] } = useRisks();
+  const { data: allPlans = [] } = usePlans();
 
   const visibleTerminalIds = useMemo(() => {
     if (!user) return [];
@@ -138,8 +139,8 @@ export function DashboardPage() {
 
   if (!user) return null;
 
-  const risks = data.risks.filter(r => visibleTerminalIds.includes(r.terminalId));
-  const plans = data.plans.filter(p => visibleTerminalIds.includes(p.terminalId));
+  const risks = allRisks.filter(r => visibleTerminalIds.includes(r.terminalId));
+  const plans = allPlans.filter(p => visibleTerminalIds.includes(p.terminalId));
 
   const activeTerminals = visibleTerminals.filter(t => t.status === 'Ativo').length;
   const activePlans = plans.filter(p => p.status === 'ativo').length;

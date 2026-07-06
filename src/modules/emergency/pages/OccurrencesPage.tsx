@@ -7,7 +7,7 @@ import { Occurrence, OccurrenceStatus, OccurrenceCriticality, TimelineEventType 
 import { Plus, Siren, Trash2, Clock, ChevronDown, ChevronUp, Paperclip, User, AlertTriangle, Bell, CheckCircle, Play, RefreshCw, Filter, Timer, Radio, Download, Loader2 } from 'lucide-react';
 import { EmergencyResponseSection } from '../components/EmergencyResponseSection';
 import { generateIncidentPDF } from '../components/generateIncidentPDF';
-import { useOccurrences, useOccurrenceMutations, useTerminals, useEntities, usePermissions } from '@/api';
+import { useOccurrences, useOccurrenceMutations, useTerminals, useEntities, usePermissions, useRisks, usePlans, useDocuments } from '@/api';
 
 const EVENT_TYPES: TimelineEventType[] = [
   'ocorrência registrada', 'equipe acionada', 'plano de emergência ativado',
@@ -71,12 +71,15 @@ function getResponseTime(o: Occurrence): string | null {
 export function OccurrencesPage() {
   const navigate = useNavigate();
   const openSituationRoom = (id: string) => navigate(situationRoomPath(id));
-  // `data` permanece só para as partes ainda mockadas do PDF/planos (Fase 5a)
+  // `data` permanece só para o shape do AppData exigido pelo gerador de PDF
   const { user, data } = useAuth();
   const { data: occurrencesRaw = [], isLoading, isError } = useOccurrences();
   const { data: terminals = [] } = useTerminals();
   const { data: entities = [] } = useEntities();
   const { data: permissions = [] } = usePermissions();
+  const { data: risks = [] } = useRisks();
+  const { data: plans = [] } = usePlans();
+  const { data: documents = [] } = useDocuments();
   const { create, setStatus, addTimeline, remove } = useOccurrenceMutations();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ type: '', description: '', criticality: 'média' as OccurrenceCriticality, responsible: '', team: '', terminalId: '' });
@@ -103,8 +106,8 @@ export function OccurrencesPage() {
   const activeFilterCount = [filters.terminalId, filters.status, filters.criticality, filters.dateFrom].filter(Boolean).length;
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
 
-  // Dados reais para o PDF (planos/riscos/docs seguem mock até a Fase 5a)
-  const pdfData = { ...data, terminals, entities, permissions };
+  // Dados reais para o PDF (Fase 5a completa: riscos/planos/docs também da API)
+  const pdfData = { ...data, terminals, entities, permissions, risks, plans, documents };
 
   const handleAdd = () => {
     if (!form.type || !form.description) return;
@@ -378,8 +381,8 @@ export function OccurrencesPage() {
                 </div>
               </div>
 
-              {/* Emergency Response (planos seguem mock até a Fase 5a) */}
-              <EmergencyResponseSection occurrence={o} plans={data.plans} onActivate={activateEmergencyPlan} onActionComplete={handleEmergencyAction} />
+              {/* Emergency Response — planos reais da API (Fase 5a) */}
+              <EmergencyResponseSection occurrence={o} plans={plans} onActivate={activateEmergencyPlan} onActionComplete={handleEmergencyAction} />
 
               {/* Timeline toggle */}
               <button onClick={() => setExpandedId(isExpanded ? null : o.id)} className="w-full px-4 py-2.5 border-t border-border flex items-center justify-between text-xs font-bold text-muted-foreground hover:bg-secondary/50 transition-colors">

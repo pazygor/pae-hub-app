@@ -14,6 +14,7 @@ import { occurrencesApi, OccurrenceInput, TimelineEventInput } from './occurrenc
 import { dashboardApi } from './dashboard';
 import { entityNotificationsApi } from './entity-notifications';
 import { chatApi } from './chat';
+import { risksApi, RiskInput, plansApi, PlanInput, mapElementsApi, MapElementInput, documentsApi, DocumentInput } from './pae-resources';
 
 const TERMINALS_KEY = ['terminals'];
 const USERS_KEY = ['users'];
@@ -157,6 +158,69 @@ export function useCopIndicators(terminalId?: string) {
     queryFn: () => dashboardApi.copIndicators(terminalId),
     refetchInterval: 30_000, // COP é "tempo quase-real" até o Socket.IO (Fase 3)
   });
+}
+
+/* ── Fase 5a — Riscos, Planos, Mapa e Documentos ───────────────────────────── */
+
+const RISKS_KEY = ['risks'];
+const PLANS_KEY = ['plans'];
+const MAP_ELEMENTS_KEY = ['map-elements'];
+const DOCUMENTS_KEY = ['documents'];
+
+export function useRisks() {
+  return useQuery({ queryKey: RISKS_KEY, queryFn: risksApi.list });
+}
+
+export function useRiskMutations() {
+  const qc = useQueryClient();
+  const onSuccess = () => qc.invalidateQueries({ queryKey: RISKS_KEY });
+  return {
+    create: useMutation({ mutationFn: (input: RiskInput) => risksApi.create(input), onSuccess }),
+    update: useMutation({ mutationFn: (v: { id: string; input: Partial<RiskInput> }) => risksApi.update(v.id, v.input), onSuccess }),
+    remove: useMutation({ mutationFn: (id: string) => risksApi.remove(id), onSuccess }),
+  };
+}
+
+export function usePlans() {
+  return useQuery({ queryKey: PLANS_KEY, queryFn: plansApi.list });
+}
+
+export function usePlanMutations() {
+  const qc = useQueryClient();
+  const onSuccess = () => qc.invalidateQueries({ queryKey: PLANS_KEY });
+  return {
+    create: useMutation({ mutationFn: (input: PlanInput) => plansApi.create(input), onSuccess }),
+    update: useMutation({ mutationFn: (v: { id: string; input: Partial<PlanInput> }) => plansApi.update(v.id, v.input), onSuccess }),
+    remove: useMutation({ mutationFn: (id: string) => plansApi.remove(id), onSuccess }),
+  };
+}
+
+export function useMapElements() {
+  return useQuery({ queryKey: MAP_ELEMENTS_KEY, queryFn: mapElementsApi.list });
+}
+
+export function useMapElementMutations() {
+  const qc = useQueryClient();
+  const onSuccess = () => qc.invalidateQueries({ queryKey: MAP_ELEMENTS_KEY });
+  return {
+    create: useMutation({ mutationFn: (input: MapElementInput) => mapElementsApi.create(input), onSuccess }),
+    update: useMutation({ mutationFn: (v: { id: string; input: Partial<MapElementInput> }) => mapElementsApi.update(v.id, v.input), onSuccess }),
+    remove: useMutation({ mutationFn: (id: string) => mapElementsApi.remove(id), onSuccess }),
+  };
+}
+
+export function useDocuments() {
+  return useQuery({ queryKey: DOCUMENTS_KEY, queryFn: documentsApi.list });
+}
+
+export function useDocumentMutations() {
+  const qc = useQueryClient();
+  const onSuccess = () => qc.invalidateQueries({ queryKey: DOCUMENTS_KEY });
+  return {
+    create: useMutation({ mutationFn: (input: DocumentInput) => documentsApi.create(input), onSuccess }),
+    update: useMutation({ mutationFn: (v: { id: string; input: Partial<DocumentInput> }) => documentsApi.update(v.id, v.input), onSuccess }),
+    remove: useMutation({ mutationFn: (id: string) => documentsApi.remove(id), onSuccess }),
+  };
 }
 
 /* ── Acionamento operacional (EntityNotification — Fase 3) ─────────────────── */
