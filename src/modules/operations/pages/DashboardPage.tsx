@@ -5,6 +5,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Legend, AreaChart, Area, CartesianGrid, RadialBarChart, RadialBar,
 } from 'recharts';
+import { useOccurrences, useTerminals, useEntities, usePermissions, useUsers } from '@/api';
 
 const STATUS_COLORS = ['hsl(0, 72%, 51%)', 'hsl(38, 92%, 50%)', 'hsl(220, 70%, 55%)', 'hsl(142, 71%, 45%)'];
 const RISK_COLORS = ['hsl(142, 71%, 45%)', 'hsl(38, 92%, 50%)', 'hsl(0, 72%, 51%)'];
@@ -116,23 +117,29 @@ const CenterLabel = ({ viewBox, total }: any) => {
 };
 
 export function DashboardPage() {
+  // `data` só para riscos/planos (mock até a Fase 5a)
   const { user, data } = useAuth();
+  // Ocorrências já chegam escopadas por papel/terminal do back
+  const { data: occurrences = [] } = useOccurrences();
+  const { data: terminals = [] } = useTerminals();
+  const { data: entities = [] } = useEntities();
+  const { data: permissions = [] } = usePermissions();
+  const { data: users = [] } = useUsers(user?.role === 'admin');
 
   const visibleTerminalIds = useMemo(() => {
     if (!user) return [];
-    if (user.role === 'admin') return data.terminals.map(t => t.id);
+    if (user.role === 'admin') return terminals.map(t => t.id);
     if (user.role === 'terminal') return user.linkId ? [user.linkId] : [];
-    if (user.role === 'entity') return data.permissions.find(p => p.entityId === user.linkId)?.terminalIds || [];
+    if (user.role === 'entity') return permissions.find(p => p.entityId === user.linkId)?.terminalIds || [];
     return [];
-  }, [user, data]);
+  }, [user, terminals, permissions]);
 
-  const visibleTerminals = useMemo(() => data.terminals.filter(t => visibleTerminalIds.includes(t.id)), [data.terminals, visibleTerminalIds]);
+  const visibleTerminals = useMemo(() => terminals.filter(t => visibleTerminalIds.includes(t.id)), [terminals, visibleTerminalIds]);
 
   if (!user) return null;
 
   const risks = data.risks.filter(r => visibleTerminalIds.includes(r.terminalId));
   const plans = data.plans.filter(p => visibleTerminalIds.includes(p.terminalId));
-  const occurrences = data.occurrences.filter(o => visibleTerminalIds.includes(o.terminalId));
 
   const activeTerminals = visibleTerminals.filter(t => t.status === 'Ativo').length;
   const activePlans = plans.filter(p => p.status === 'ativo').length;
@@ -141,9 +148,9 @@ export function DashboardPage() {
 
   const roleLabel = user.role === 'admin' ? 'Administrador' : user.role === 'terminal' ? 'Terminal' : 'Entidade';
   const linkedName = user.role === 'terminal'
-    ? data.terminals.find(t => t.id === user.linkId)?.name
+    ? terminals.find(t => t.id === user.linkId)?.name
     : user.role === 'entity'
-    ? data.entities.find(e => e.id === user.linkId)?.name
+    ? entities.find(e => e.id === user.linkId)?.name
     : null;
 
   const occByStatus = [
@@ -191,8 +198,8 @@ export function DashboardPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCardModern label="Terminais" value={visibleTerminals.length} variant="accent" icon={Ship} delay={0} />
-        {user.role === 'admin' && <StatCardModern label="Entidades" value={data.entities.length} icon={Shield} delay={50} />}
-        {user.role === 'admin' && <StatCardModern label="Usuários" value={data.users.length} icon={Users} delay={100} />}
+        {user.role === 'admin' && <StatCardModern label="Entidades" value={entities.length} icon={Shield} delay={50} />}
+        {user.role === 'admin' && <StatCardModern label="Usuários" value={users.length} icon={Users} delay={100} />}
         <StatCardModern label="Riscos Críticos" value={highRisks} variant={highRisks > 0 ? 'emergency' : 'default'} icon={AlertTriangle} delay={150} />
         <StatCardModern label="Planos Ativos" value={activePlans} variant="success" icon={FileText} delay={200} />
         <StatCardModern label="Ocorrências Abertas" value={openOccurrences} variant={openOccurrences > 0 ? 'warning' : 'default'} icon={Siren} delay={250} />
@@ -378,7 +385,7 @@ export function DashboardPage() {
               <div key={o.id} className="px-4 py-3 flex items-center justify-between hover:bg-secondary/30 transition-colors">
                 <div>
                   <p className="text-sm font-medium text-foreground">{o.type}</p>
-                  <p className="text-xs text-muted-foreground">{data.terminals.find(t => t.id === o.terminalId)?.name} · {o.description}</p>
+                  <p className="text-xs text-muted-foreground">{o.terminalName || terminals.find(t => t.id === o.terminalId)?.name} · {o.description}</p>
                 </div>
                 <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                   o.status === 'aberto' ? 'bg-primary/10 text-primary'
@@ -404,7 +411,7 @@ export function DashboardPage() {
               <div key={r.id} className="px-4 py-3 flex items-center justify-between hover:bg-secondary/30 transition-colors">
                 <div>
                   <p className="text-sm font-medium text-foreground">{r.type}</p>
-                  <p className="text-xs text-muted-foreground">{data.terminals.find(t => t.id === r.terminalId)?.name} · {r.affectedArea}</p>
+                  <p className="text-xs text-muted-foreground">{terminals.find(t => t.id === r.terminalId)?.name} · {r.affectedArea}</p>
                 </div>
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-primary/10 text-primary">alto</span>
               </div>

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
-import { Occurrence, TimelineEvent, TimelineEventType, OccurrenceStatus } from '@/lib/types';
+import { TimelineEventType } from '@/lib/types';
 import { generateIncidentPDF } from '../components/generateIncidentPDF';
 import { OccurrenceChat } from '../components/OccurrenceChat';
 import {
@@ -9,9 +10,10 @@ import {
   Play, RefreshCw, Bell, Paperclip, FileText, MapPin, Siren,
   ArrowLeft, Timer, Plus, ChevronDown, ChevronUp, Building2,
   Radio, X, Flame, Droplets, Route, Triangle, Users as UsersIcon, Download,
-  Navigation, ExternalLink, Flag
+  Navigation, ExternalLink, Flag, Loader2
 } from 'lucide-react';
 import L from 'leaflet';
+import { useOccurrence, useOccurrenceMutations, useTerminals, useEntities, usePermissions } from '@/api';
 
 const EVENT_TYPES: TimelineEventType[] = [
   'ocorrência registrada', 'equipe acionada', 'plano de emergência ativado',
@@ -82,57 +84,46 @@ const LAYER_LABELS: Record<string, string> = {
   meeting_point: 'Pontos de Encontro',
 };
 
-interface ChecklistItem {
-  id: string;
-  text: string;
-  done: boolean;
-}
-
-const DEFAULT_CHECKLIST: Omit<ChecklistItem, 'id'>[] = [
-  { text: 'Ocorrência validada', done: false },
-  { text: 'Equipe acionada', done: false },
-  { text: 'Plano de emergência ativado', done: false },
-  { text: 'Autoridade notificada', done: false },
-  { text: 'Evacuação iniciada', done: false },
-  { text: 'Área isolada', done: false },
-  { text: 'Comunicação registrada', done: false },
-  { text: 'Ocorrência encerrada', done: false },
-];
-
 export function SituationRoomPage() {
   const { id: occurrenceId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   // Volta no histórico quando possível; em deep-link direto, cai na lista.
   const canGoBack = (window.history.state?.idx ?? 0) > 0;
   const onBack = () => (canGoBack ? navigate(-1) : navigate('/ocorrencias'));
-  const { user, data, setData } = useAuth();
+  // `data` permanece só para o que ainda é mock: planos/riscos/docs/mapa (Fase 5a) e chat (Fase 3)
+  const { user, data } = useAuth();
+  const { data: occurrence, isLoading, isError } = useOccurrence(occurrenceId);
+  const { data: terminals = [] } = useTerminals();
+  const { data: entities = [] } = useEntities();
+  const { data: permissions = [] } = usePermissions();
+  const { setStatus, addTimeline, toggleChecklistItem } = useOccurrenceMutations();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
-  const [checklist, setChecklist] = useState<ChecklistItem[]>(() =>
-    DEFAULT_CHECKLIST.map((item, i) => ({ ...item, id: `cl-${i}` }))
-  );
   const [showTimelineForm, setShowTimelineForm] = useState(false);
   const [timelineForm, setTimelineForm] = useState<{ type: TimelineEventType; description: string; attachment: string }>({
     type: 'ação executada', description: '', attachment: '',
   });
 
-  const occurrence = data.occurrences.find(o => o.id === occurrenceId);
-  const terminal = occurrence ? data.terminals.find(t => t.id === occurrence.terminalId) : undefined;
+  const terminal = occurrence ? terminals.find(t => t.id === occurrence.terminalId) : undefined;
   const terminalPlans = occurrence ? data.plans.filter(p => p.terminalId === occurrence.terminalId) : [];
   const activePlan = terminalPlans.find(p => p.status === 'ativo');
   const hasPlanActivated = occurrence?.timeline.some(e => e.type === 'plano de emergência ativado') ?? false;
   const terminalRisks = occurrence ? data.risks.filter(r => r.terminalId === occurrence.terminalId) : [];
   const terminalDocs = occurrence ? data.documents.filter(d => d.terminalId === occurrence.terminalId) : [];
-  const terminalElements = occurrence ? data.mapElements.filter(el => el.terminalId === occurrence.terminalId) : [];
+  const terminalElements = useMemo(
+    () => (occurrence ? data.mapElements.filter(el => el.terminalId === occurrence.terminalId) : []),
+    [data.mapElements, occurrence?.terminalId],
+  );
   const timeline = occurrence ? [...(occurrence.timeline || [])].sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime()) : [];
+  const checklist = occurrence?.checklist ?? [];
 
   const involvedEntities = useMemo(() => {
     if (!occurrence) return [];
-    const entityIds = data.permissions
+    const entityIds = permissions
       .filter(p => p.terminalIds.includes(occurrence.terminalId))
       .map(p => p.entityId);
-    return data.entities.filter(e => entityIds.includes(e.id));
-  }, [data.permissions, data.entities, occurrence?.terminalId]);
+    return entities.filter(e => entityIds.includes(e.id));
+  }, [permissions, entities, occurrence?.terminalId]);
 
   const elapsed = useMemo(() => {
     if (!occurrence) return '';
@@ -173,10 +164,21 @@ export function SituationRoomPage() {
     return () => { map.remove(); mapInstanceRef.current = null; };
   }, [terminal, terminalElements, occurrence?.type]);
 
+  // Carregando da API (deep-link/F5): loader antes de decidir redirect.
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-muted-foreground text-sm gap-2">
+        <Loader2 size={16} className="animate-spin" /> Carregando Sala de Situação...
+      </div>
+    );
+  }
   // Ocorrência inexistente (ex.: deep-link inválido) → volta para a lista.
-  if (!occurrence || !user) return <Navigate to="/ocorrencias" replace />;
+  if (isError || !occurrence || !user) return <Navigate to="/ocorrencias" replace />;
 
   const canAct = user.role === 'admin' || user.role === 'terminal';
+  const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
+  // Dados reais para o PDF (planos/riscos/docs seguem mock até a Fase 5a)
+  const pdfData = { ...data, terminals, entities, permissions };
 
   const formatDate = (dt: string) => {
     const d = new Date(dt);
@@ -186,35 +188,37 @@ export function SituationRoomPage() {
 
   // Actions
   const activateEmergencyPlan = () => {
-    if (!activePlan) return;
-    const now = new Date().toISOString();
-    const newEvent: TimelineEvent = { id: `tl${Date.now()}`, dateTime: now, type: 'plano de emergência ativado', description: `${activePlan.name} ativado — resposta de emergência iniciada`, userName: user.name };
-    setData(d => ({
-      ...d,
-      occurrences: d.occurrences.map(o => o.id === occurrenceId ? { ...o, status: 'emergência ativa' as OccurrenceStatus, timeline: [...(o.timeline || []), newEvent] } : o),
-    }));
+    if (!activePlan || !occurrenceId) return;
+    addTimeline.mutate(
+      { id: occurrenceId, input: { type: 'plano de emergência ativado', description: `${activePlan.name} ativado — resposta de emergência iniciada` } },
+      { onSuccess: () => setStatus.mutate({ id: occurrenceId, status: 'emergência ativa' }, { onError }), onError },
+    );
   };
 
   const resolveOccurrence = () => {
-    const now = new Date().toISOString();
-    const newEvent: TimelineEvent = { id: `tl${Date.now()}`, dateTime: now, type: 'ocorrência resolvida', description: 'Ocorrência encerrada pela Sala de Situação', userName: user.name };
-    setData(d => ({
-      ...d,
-      occurrences: d.occurrences.map(o => o.id === occurrenceId ? { ...o, status: 'resolvido' as OccurrenceStatus, timeline: [...(o.timeline || []), newEvent] } : o),
-    }));
+    if (!occurrenceId) return;
+    setStatus.mutate(
+      { id: occurrenceId, status: 'resolvido', comment: 'Ocorrência encerrada pela Sala de Situação' },
+      { onSuccess: () => toast.success('Ocorrência encerrada'), onError },
+    );
   };
 
   const addTimelineEvent = () => {
-    if (!timelineForm.description) return;
-    const newEvent: TimelineEvent = { id: `tl${Date.now()}`, dateTime: new Date().toISOString(), type: timelineForm.type, description: timelineForm.description, userName: user.name, attachment: timelineForm.attachment || undefined };
-    setData(d => ({ ...d, occurrences: d.occurrences.map(o => o.id === occurrenceId ? { ...o, timeline: [...(o.timeline || []), newEvent] } : o) }));
-    setTimelineForm({ type: 'ação executada', description: '', attachment: '' });
-    setShowTimelineForm(false);
+    if (!timelineForm.description || !occurrenceId) return;
+    addTimeline.mutate(
+      { id: occurrenceId, input: { type: timelineForm.type, description: timelineForm.description, attachment: timelineForm.attachment || undefined } },
+      {
+        onSuccess: () => { setTimelineForm({ type: 'ação executada', description: '', attachment: '' }); setShowTimelineForm(false); },
+        onError,
+      },
+    );
   };
 
   const toggleChecklist = (id: string) => {
-    if (!canAct) return;
-    setChecklist(prev => prev.map(c => c.id === id ? { ...c, done: !c.done } : c));
+    if (!canAct || !occurrenceId) return;
+    const item = checklist.find(c => c.id === id);
+    if (!item) return;
+    toggleChecklistItem.mutate({ id: occurrenceId, itemId: id, done: !item.done }, { onError });
   };
 
   const completedCount = checklist.filter(c => c.done).length;
@@ -261,7 +265,7 @@ export function SituationRoomPage() {
               <button onClick={() => setShowTimelineForm(true)} className="flex items-center gap-1.5 px-3 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg hover:bg-secondary/80 transition-colors">
                 <Plus size={14} /> Evento
               </button>
-              <button onClick={() => generateIncidentPDF(occurrence, data)} className="flex items-center gap-1.5 px-3 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg hover:bg-secondary/80 transition-colors">
+              <button onClick={() => generateIncidentPDF(occurrence, pdfData)} className="flex items-center gap-1.5 px-3 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg hover:bg-secondary/80 transition-colors">
                 <Download size={14} /> Relatório PDF
               </button>
               {occurrence.status !== 'resolvido' && (
@@ -360,7 +364,7 @@ export function SituationRoomPage() {
             <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
               <div
                 className="h-full bg-success rounded-full transition-all duration-300"
-                style={{ width: `${(completedCount / checklist.length) * 100}%` }}
+                style={{ width: `${checklist.length ? (completedCount / checklist.length) * 100 : 0}%` }}
               />
             </div>
           </div>

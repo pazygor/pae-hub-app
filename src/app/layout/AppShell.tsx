@@ -13,13 +13,15 @@ import { PendencyAlertModal } from './PendencyAlertModal';
 import { useEmergencyDispatch } from './EmergencyDispatchProvider';
 import { useViewMode } from './ViewModeProvider';
 import { headerLabelForPath, pathForView, situationRoomPath } from '@/lib/nav-config';
+import { useActiveEmergencies } from '@/api';
 
 /**
  * Casca da aplicação (sidebar + header + banner de emergência + footer),
  * herdada do antigo PAESystem. O conteúdo de cada rota renderiza no <Outlet/>.
  */
 export function AppShell() {
-  const { user, data } = useAuth();
+  const { user } = useAuth();
+  const { emergencies: activeEmergencies } = useActiveEmergencies();
   const { presentationMode, togglePresentationMode } = usePresentationMode();
   const { openDispatch } = useEmergencyDispatch();
   const { fullSystem, exitFullSystem } = useViewMode();
@@ -73,15 +75,12 @@ export function AppShell() {
 
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Global Emergency Alert */}
-        {data.occurrences.some(o => o.status === 'emergência ativa') && (
+        {activeEmergencies.length > 0 && (
           <div className="bg-primary text-primary-foreground px-4 py-2 flex items-center justify-center gap-2 shrink-0 animate-pulse">
             <Siren size={16} />
             <span className="text-xs font-black uppercase tracking-widest">⚠ EMERGÊNCIA ATIVA ⚠</span>
             <span className="text-[10px] font-bold opacity-80">
-              — {data.occurrences.filter(o => o.status === 'emergência ativa').map(o => {
-                const t = data.terminals.find(t => t.id === o.terminalId);
-                return t ? t.name : o.type;
-              }).join(' | ')}
+              — {activeEmergencies.map(o => o.terminalName || o.type).join(' | ')}
             </span>
           </div>
         )}

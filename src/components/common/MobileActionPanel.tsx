@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { Siren, IdCard, MapPin, Navigation, Clock, ChevronRight, AlertTriangle, Menu, LogOut, Shield } from 'lucide-react';
 import { usePresentationMode, maskName } from '@/lib/presentation-mode';
+import { useActiveEmergencies, useTerminals } from '@/api';
 import m1Logo from '@/assets/m1-logo.png';
 
 interface Props {
@@ -148,11 +149,11 @@ function HoldEmergencyButton({ onConfirm }: { onConfirm: () => void }) {
 
 /* ── Main Panel ── */
 export function MobileActionPanel({ onDispatchEmergency, onOpenSituationRoom, onNavigate, onOpenFullSystem }: Props) {
-  const { user, data, logout } = useAuth();
+  const { user, logout } = useAuth();
   const { presentationMode } = usePresentationMode();
+  const { emergencies: activeEmergencies, occurrences } = useActiveEmergencies();
+  const { data: terminals = [] } = useTerminals();
   if (!user) return null;
-
-  const activeEmergencies = data.occurrences.filter(o => o.status === 'emergência ativa');
   const canDispatch = user.role === 'admin' || user.role === 'terminal';
   const roleLabel = user.role === 'admin' ? 'ADMIN' : user.role === 'terminal' ? 'TERMINAL' : 'ENTIDADE';
 
@@ -222,7 +223,7 @@ export function MobileActionPanel({ onDispatchEmergency, onOpenSituationRoom, on
           ) : (
             <div className="space-y-3">
               {activeEmergencies.map(occ => {
-                const terminal = data.terminals.find(t => t.id === occ.terminalId);
+                const terminal = terminals.find(t => t.id === occ.terminalId);
                 const elapsed = Math.floor((Date.now() - new Date(occ.dateTime).getTime()) / 60000);
                 const elapsedLabel = elapsed < 60 ? `${elapsed}min` : `${Math.floor(elapsed / 60)}h${elapsed % 60}min`;
 
@@ -289,13 +290,13 @@ export function MobileActionPanel({ onDispatchEmergency, onOpenSituationRoom, on
         </div>
 
         {/* Recent Occurrences */}
-        {data.occurrences.filter(o => o.status !== 'emergência ativa').length > 0 && (
+        {occurrences.filter(o => o.status !== 'emergência ativa').length > 0 && (
           <div>
             <h2 className="text-[11px] font-black uppercase tracking-widest text-muted-foreground mb-3">
               Ocorrências Recentes
             </h2>
             <div className="space-y-2">
-              {data.occurrences
+              {occurrences
                 .filter(o => o.status !== 'emergência ativa')
                 .slice(0, 5)
                 .map(occ => (

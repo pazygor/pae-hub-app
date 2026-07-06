@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/command';
 import { Ship, Siren } from 'lucide-react';
 import { NAV_CONFIG } from '@/lib/nav-config';
+import { useOccurrences, useTerminals } from '@/api';
 
 // Itens de navegação derivados da fonte única (nav-config).
 const NAV_ITEMS = NAV_CONFIG;
@@ -18,15 +19,9 @@ interface Props {
 }
 
 export function GlobalSearch({ open, onOpenChange, onNavigate, onOpenSituationRoom }: Props) {
-  const { data } = useAuth();
-
-  const occurrences = useMemo(() =>
-    data.occurrences.map(o => ({
-      ...o,
-      terminalName: data.terminals.find(t => t.id === o.terminalId)?.name || '',
-    })),
-    [data.occurrences, data.terminals]
-  );
+  // Ocorrências e terminais reais da API
+  const { data: occurrences = [] } = useOccurrences();
+  const { data: terminals = [] } = useTerminals();
 
   const select = (view: string) => {
     onNavigate(view);
@@ -70,11 +65,11 @@ export function GlobalSearch({ open, onOpenChange, onNavigate, onOpenSituationRo
           </>
         )}
 
-        {data.terminals.length > 0 && (
+        {terminals.length > 0 && (
           <>
             <CommandSeparator />
             <CommandGroup heading="Terminais">
-              {data.terminals.map(t => (
+              {terminals.map(t => (
                 <CommandItem key={t.id} onSelect={() => select('terminals')} className="gap-2">
                   <Ship size={16} className="text-muted-foreground shrink-0" />
                   <span>{t.name}</span>

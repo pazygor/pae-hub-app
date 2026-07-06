@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { situationRoomPath } from '@/lib/nav-config';
-import { Occurrence, OccurrenceStatus, OccurrenceCriticality, TimelineEvent, TimelineEventType } from '@/lib/types';
-import { Plus, Siren, Trash2, Clock, ChevronDown, ChevronUp, Paperclip, User, AlertTriangle, Bell, CheckCircle, Play, RefreshCw, FileText, ShieldAlert, Filter, Timer, Radio, Download } from 'lucide-react';
+import { Occurrence, OccurrenceStatus, OccurrenceCriticality, TimelineEventType } from '@/lib/types';
+import { Plus, Siren, Trash2, Clock, ChevronDown, ChevronUp, Paperclip, User, AlertTriangle, Bell, CheckCircle, Play, RefreshCw, Filter, Timer, Radio, Download, Loader2 } from 'lucide-react';
 import { EmergencyResponseSection } from '../components/EmergencyResponseSection';
 import { generateIncidentPDF } from '../components/generateIncidentPDF';
+import { useOccurrences, useOccurrenceMutations, useTerminals, useEntities, usePermissions } from '@/api';
 
 const EVENT_TYPES: TimelineEventType[] = [
   'ocorrência registrada', 'equipe acionada', 'plano de emergência ativado',
@@ -66,115 +68,101 @@ function getResponseTime(o: Occurrence): string | null {
   return hrs > 0 ? `${hrs}h ${remainMins}min` : `${mins}min`;
 }
 
-function generateIncNumber(existingOccurrences: Occurrence[]): string {
-  const existing = existingOccurrences
-    .map(o => o.incNumber)
-    .filter(n => n && n.startsWith('INC-'))
-    .map(n => parseInt(n.replace('INC-', ''), 10))
-    .filter(n => !isNaN(n));
-  const next = existing.length > 0 ? Math.max(...existing) + 1 : 1;
-  return `INC-${next.toString().padStart(4, '0')}`;
-}
-
 export function OccurrencesPage() {
   const navigate = useNavigate();
   const openSituationRoom = (id: string) => navigate(situationRoomPath(id));
-  const { user, data, setData } = useAuth();
+  // `data` permanece só para as partes ainda mockadas do PDF/planos (Fase 5a)
+  const { user, data } = useAuth();
+  const { data: occurrencesRaw = [], isLoading, isError } = useOccurrences();
+  const { data: terminals = [] } = useTerminals();
+  const { data: entities = [] } = useEntities();
+  const { data: permissions = [] } = usePermissions();
+  const { create, setStatus, addTimeline, remove } = useOccurrenceMutations();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ type: '', description: '', criticality: 'média' as OccurrenceCriticality, responsible: '', team: '' });
+  const [form, setForm] = useState({ type: '', description: '', criticality: 'média' as OccurrenceCriticality, responsible: '', team: '', terminalId: '' });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [timelineForm, setTimelineForm] = useState<{ type: TimelineEventType; description: string; attachment: string }>({ type: 'ação executada', description: '', attachment: '' });
   const [showTimelineForm, setShowTimelineForm] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({ terminalId: '', status: '' as OccurrenceStatus | '', criticality: '' as OccurrenceCriticality | '', dateFrom: '' });
 
-  const visibleTerminalIds = useMemo(() => {
-    if (!user) return [];
-    if (user.role === 'admin') return data.terminals.map(t => t.id);
-    if (user.role === 'terminal') return user.linkId ? [user.linkId] : [];
-    if (user.role === 'entity') return data.permissions.find(p => p.entityId === user.linkId)?.terminalIds || [];
-    return [];
-  }, [user, data]);
-
   const occurrences = useMemo(() => {
-    const allOcc = data.occurrences.filter(o => visibleTerminalIds.includes(o.terminalId));
-    let filtered = allOcc;
+    // O escopo por papel/terminal é do back; aqui só os filtros de tela.
+    let filtered = occurrencesRaw;
     if (filters.terminalId) filtered = filtered.filter(o => o.terminalId === filters.terminalId);
     if (filters.status) filtered = filtered.filter(o => o.status === filters.status);
     if (filters.criticality) filtered = filtered.filter(o => o.criticality === filters.criticality);
     if (filters.dateFrom) filtered = filtered.filter(o => o.dateTime >= filters.dateFrom);
     return filtered;
-  }, [data.occurrences, visibleTerminalIds, filters]);
+  }, [occurrencesRaw, filters]);
 
   if (!user) return null;
 
-
   const canCreate = user.role === 'admin' || user.role === 'terminal';
-  const canAddTimeline = true;
+  const canAddTimeline = canCreate;
   const activeFilterCount = [filters.terminalId, filters.status, filters.criticality, filters.dateFrom].filter(Boolean).length;
+  const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
+
+  // Dados reais para o PDF (planos/riscos/docs seguem mock até a Fase 5a)
+  const pdfData = { ...data, terminals, entities, permissions };
 
   const handleAdd = () => {
     if (!form.type || !form.description) return;
-    const terminalId = user.role === 'terminal' ? user.linkId! : visibleTerminalIds[0];
-    const now = new Date().toISOString();
-    const incNumber = generateIncNumber(data.occurrences);
-    const newOcc: Occurrence = {
-      id: `o${Date.now()}`,
-      incNumber,
-      terminalId,
-      dateTime: now,
-      type: form.type,
-      description: form.description,
-      status: 'aberto',
-      criticality: form.criticality,
-      responsible: form.responsible || user.name,
-      team: form.team,
-      timeline: [
-        { id: `tl${Date.now()}`, dateTime: now, type: 'ocorrência registrada', description: form.description, userName: user.name },
-      ],
-    };
-    setData(d => ({ ...d, occurrences: [...d.occurrences, newOcc] }));
-    setForm({ type: '', description: '', criticality: 'média', responsible: '', team: '' });
-    setShowForm(false);
+    if (user.role === 'admin' && !form.terminalId) { toast.error('Selecione o terminal'); return; }
+    create.mutate(
+      {
+        type: form.type,
+        description: form.description,
+        criticality: form.criticality,
+        responsible: form.responsible || undefined,
+        team: form.team || undefined,
+        terminalId: user.role === 'admin' ? form.terminalId : undefined,
+      },
+      {
+        onSuccess: (occ) => {
+          setForm({ type: '', description: '', criticality: 'média', responsible: '', team: '', terminalId: '' });
+          setShowForm(false);
+          toast.success(`Ocorrência ${occ.incNumber} registrada`);
+        },
+        onError,
+      },
+    );
   };
 
   const changeStatus = (id: string, status: OccurrenceStatus) => {
-    const eventType: TimelineEventType = status === 'resolvido' ? 'ocorrência resolvida' : 'atualização de status';
-    const desc = status === 'resolvido' ? 'Ocorrência marcada como resolvida' : `Status alterado para "${status}"`;
-    setData(d => ({
-      ...d,
-      occurrences: d.occurrences.map(o => o.id === id ? {
-        ...o, status,
-        timeline: [...(o.timeline || []), { id: `tl${Date.now()}`, dateTime: new Date().toISOString(), type: eventType, description: desc, userName: user.name }],
-      } : o),
-    }));
+    setStatus.mutate({ id, status }, { onError });
   };
 
-  const handleDelete = (id: string) => setData(d => ({ ...d, occurrences: d.occurrences.filter(o => o.id !== id) }));
+  const handleDelete = (id: string) => {
+    if (!confirm('Remover esta ocorrência?')) return;
+    remove.mutate(id, { onSuccess: () => toast.success('Ocorrência removida'), onError });
+  };
 
   const addTimelineEvent = (occId: string) => {
     if (!timelineForm.description) return;
-    const newEvent: TimelineEvent = { id: `tl${Date.now()}`, dateTime: new Date().toISOString(), type: timelineForm.type, description: timelineForm.description, userName: user.name, attachment: timelineForm.attachment || undefined };
-    setData(d => ({ ...d, occurrences: d.occurrences.map(o => o.id === occId ? { ...o, timeline: [...(o.timeline || []), newEvent] } : o) }));
-    setTimelineForm({ type: 'ação executada', description: '', attachment: '' });
-    setShowTimelineForm(null);
+    addTimeline.mutate(
+      { id: occId, input: { type: timelineForm.type, description: timelineForm.description, attachment: timelineForm.attachment || undefined } },
+      {
+        onSuccess: () => { setTimelineForm({ type: 'ação executada', description: '', attachment: '' }); setShowTimelineForm(null); },
+        onError,
+      },
+    );
   };
 
   const activateEmergencyPlan = (occId: string, planName: string) => {
-    const now = new Date().toISOString();
-    const newEvent: TimelineEvent = { id: `tl${Date.now()}`, dateTime: now, type: 'plano de emergência ativado', description: `${planName} ativado — resposta de emergência iniciada`, userName: user.name };
-    setData(d => ({
-      ...d,
-      occurrences: d.occurrences.map(o => o.id === occId ? { ...o, status: 'emergência ativa' as OccurrenceStatus, timeline: [...(o.timeline || []), newEvent] } : o),
-    }));
+    // Evento de plano + mudança de status — dois registros reais na timeline imutável
+    addTimeline.mutate(
+      { id: occId, input: { type: 'plano de emergência ativado', description: `${planName} ativado — resposta de emergência iniciada` } },
+      { onSuccess: () => setStatus.mutate({ id: occId, status: 'emergência ativa' }, { onError }), onError },
+    );
   };
 
   const handleEmergencyAction = (occId: string, actionText: string) => {
-    const newEvent: TimelineEvent = { id: `tl${Date.now()}`, dateTime: new Date().toISOString(), type: 'ação executada', description: actionText, userName: user.name };
-    setData(d => ({ ...d, occurrences: d.occurrences.map(o => o.id === occId ? { ...o, timeline: [...(o.timeline || []), newEvent] } : o) }));
+    addTimeline.mutate({ id: occId, input: { type: 'ação executada', description: actionText } }, { onError });
   };
 
-  const getTerminalName = (id: string) => data.terminals.find(t => t.id === id)?.name || id;
+  const getTerminalName = (o: { terminalId: string; terminalName?: string }) =>
+    o.terminalName || terminals.find(t => t.id === o.terminalId)?.name || o.terminalId;
   const formatDate = (dt: string) => { const d = new Date(dt); return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`; };
   const formatTime = (dt: string) => new Date(dt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
@@ -206,7 +194,7 @@ export function OccurrencesPage() {
               <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Terminal</label>
               <select value={filters.terminalId} onChange={e => setFilters(f => ({ ...f, terminalId: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-xs text-foreground">
                 <option value="">Todos</option>
-                {data.terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </div>
             <div>
@@ -243,13 +231,21 @@ export function OccurrencesPage() {
               {CRITICALITY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
+          {user.role === 'admin' && (
+            <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground">
+              <option value="">Selecione o terminal...</option>
+              {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
           <textarea placeholder="Descrição" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground min-h-[60px]" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input placeholder="Responsável" value={form.responsible} onChange={e => setForm(f => ({ ...f, responsible: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground" />
             <input placeholder="Equipe responsável" value={form.team} onChange={e => setForm(f => ({ ...f, team: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground" />
           </div>
           <div className="flex gap-2">
-            <button onClick={handleAdd} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg">Registrar</button>
+            <button onClick={handleAdd} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5">
+              {create.isPending && <Loader2 size={12} className="animate-spin" />} Registrar
+            </button>
             <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg">Cancelar</button>
           </div>
         </div>
@@ -259,7 +255,7 @@ export function OccurrencesPage() {
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none -mx-1 px-1">
         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider whitespace-nowrap shrink-0">Filtro:</span>
         {CRITICALITY_OPTIONS.map(c => {
-          const count = data.occurrences.filter(o => visibleTerminalIds.includes(o.terminalId) && o.criticality === c).length;
+          const count = occurrencesRaw.filter(o => o.criticality === c).length;
           const isActive = filters.criticality === c;
           return (
             <button
@@ -275,7 +271,7 @@ export function OccurrencesPage() {
         })}
         <span className="w-px h-5 bg-border shrink-0" />
         {STATUS_OPTIONS.map(s => {
-          const count = data.occurrences.filter(o => visibleTerminalIds.includes(o.terminalId) && o.status === s).length;
+          const count = occurrencesRaw.filter(o => o.status === s).length;
           const isActive = filters.status === s;
           return (
             <button
@@ -301,10 +297,18 @@ export function OccurrencesPage() {
 
       {/* Occurrences list */}
       <div className="space-y-3">
-        {occurrences.length === 0 && <p className="p-4 text-sm text-muted-foreground italic bg-card border border-border rounded-xl">Nenhuma ocorrência encontrada.</p>}
+        {isLoading && (
+          <p className="p-4 text-sm text-muted-foreground bg-card border border-border rounded-xl flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin" /> Carregando ocorrências...
+          </p>
+        )}
+        {isError && !isLoading && (
+          <p className="p-4 text-sm text-primary bg-card border border-border rounded-xl">Falha ao carregar ocorrências da API.</p>
+        )}
+        {!isLoading && !isError && occurrences.length === 0 && <p className="p-4 text-sm text-muted-foreground italic bg-card border border-border rounded-xl">Nenhuma ocorrência encontrada.</p>}
         {occurrences.map(o => {
           const isExpanded = expandedId === o.id;
-          const timeline = (o.timeline || []).sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
+          const timeline = [...(o.timeline || [])].sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
           const responseTime = getResponseTime(o);
           return (
             <div key={o.id} className="bg-card border border-border rounded-xl overflow-hidden">
@@ -350,7 +354,7 @@ export function OccurrencesPage() {
 
                 {/* Row 5: Meta info */}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3 text-[11px] text-muted-foreground">
-                  <span className="font-medium">{getTerminalName(o.terminalId)}</span>
+                  <span className="font-medium">{getTerminalName(o)}</span>
                   <span className="hidden sm:inline">·</span>
                   <span>{formatDate(o.dateTime)}</span>
                   {o.responsible && <span className="flex items-center gap-1"><User size={10} /> {o.responsible}</span>}
@@ -359,7 +363,7 @@ export function OccurrencesPage() {
 
                 {/* Row 6: Action buttons */}
                 <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
-                  <button onClick={() => generateIncidentPDF(o, data)} className="px-3 py-1.5 text-[10px] font-bold rounded-lg flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
+                  <button onClick={() => generateIncidentPDF(o, pdfData)} className="px-3 py-1.5 text-[10px] font-bold rounded-lg flex items-center gap-1.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors">
                     <Download size={12} /> Relatório
                   </button>
                   {canCreate && o.status !== 'em atendimento' && o.status !== 'resolvido' && (
@@ -374,7 +378,7 @@ export function OccurrencesPage() {
                 </div>
               </div>
 
-              {/* Emergency Response */}
+              {/* Emergency Response (planos seguem mock até a Fase 5a) */}
               <EmergencyResponseSection occurrence={o} plans={data.plans} onActivate={activateEmergencyPlan} onActionComplete={handleEmergencyAction} />
 
               {/* Timeline toggle */}
@@ -427,7 +431,7 @@ export function OccurrencesPage() {
                             </div>
                             <textarea placeholder="Descrição do evento..." value={timelineForm.description} onChange={e => setTimelineForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-xs text-foreground placeholder:text-muted-foreground min-h-[50px]" />
                             <div className="flex gap-2">
-                              <button onClick={() => addTimelineEvent(o.id)} className="px-3 py-1.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-lg">Adicionar Evento</button>
+                              <button onClick={() => addTimelineEvent(o.id)} disabled={addTimeline.isPending} className="px-3 py-1.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-lg disabled:opacity-60">Adicionar Evento</button>
                               <button onClick={() => setShowTimelineForm(null)} className="px-3 py-1.5 bg-secondary text-secondary-foreground text-[10px] font-bold rounded-lg">Cancelar</button>
                             </div>
                           </div>

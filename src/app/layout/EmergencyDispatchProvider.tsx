@@ -1,15 +1,20 @@
 import { createContext, useContext, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Siren, X } from 'lucide-react';
+import { Siren, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
-import { Occurrence, SeverityLevel, EntityNotification } from '@/lib/types';
+import { SeverityLevel } from '@/lib/types';
 import { situationRoomPath } from '@/lib/nav-config';
+import { useTerminals, useEntities, useNotificationRules, useOccurrenceMutations, occurrencesApi } from '@/api';
 
 /**
- * Provider do fluxo de "Disparar Emergência" (lógica movida do PAESystem).
- * É uma layout-route: renderiza <Outlet/> + o modal global, e expõe
- * useEmergencyDispatch() para qualquer tela (header, painel mobile, etc.).
+ * Provider do fluxo de "Disparar Emergência" (Funcional §4.1) — Fase 2:
+ * cria a ocorrência REAL na API (status 'emergência ativa', INC-#### do back,
+ * checklist de 8 passos semeado) e registra na timeline os eventos de disparo
+ * e de acionamento das entidades conforme as NotificationRules reais (Fase 4).
+ * O registro EntityNotification (Orquestração) chega na Fase 3 — aqui os
+ * acionamentos ficam rastreados na timeline imutável.
  */
 
 interface EmergencyDispatchContextType {
@@ -25,8 +30,12 @@ export function useEmergencyDispatch() {
 }
 
 export function EmergencyDispatchProvider() {
-  const { user, data, setData } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const { data: terminals = [] } = useTerminals();
+  const { data: entities = [] } = useEntities();
+  const { data: notificationRules = [] } = useNotificationRules();
+  const { create } = useOccurrenceMutations();
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({
     description: '',
@@ -37,9 +46,9 @@ export function EmergencyDispatchProvider() {
   const visibleTerminals = !user
     ? []
     : user.role === 'admin'
-      ? data.terminals
+      ? terminals
       : user.role === 'terminal' && user.linkId
-        ? data.terminals.filter(t => t.id === user.linkId)
+        ? terminals.filter(t => t.id === user.linkId)
         : [];
 
   const openDispatch = () => {
@@ -52,75 +61,48 @@ export function EmergencyDispatchProvider() {
     setShowModal(true);
   };
 
-  const generateIncNumber = () => {
-    const existing = data.occurrences
-      .map(o => o.incNumber)
-      .filter(n => n && n.startsWith('INC-'))
-      .map(n => parseInt(n.replace('INC-', ''), 10))
-      .filter(n => !isNaN(n));
-    const next = existing.length > 0 ? Math.max(...existing) + 1 : 1;
-    return `INC-${next.toString().padStart(4, '0')}`;
-  };
-
   const handleDispatch = () => {
-    if (!user || !form.description) return;
+    if (!user || !form.description || create.isPending) return;
     const terminalId = form.terminalId || (user.role === 'terminal' ? user.linkId! : visibleTerminals[0]?.id);
     if (!terminalId) return;
-    const now = new Date().toISOString();
-    const ts = Date.now();
-    const incNumber = generateIncNumber();
-    const occId = `o${ts}`;
 
-    // Regras de acionamento para o tipo 'Emergência'
-    const matchingRules = data.notificationRules.filter(r => r.occurrenceType === 'Emergência');
+    create.mutate(
+      {
+        type: 'Emergência',
+        description: form.description,
+        status: 'emergência ativa',
+        criticality: 'alta',
+        severity: form.severity,
+        terminalId,
+      },
+      {
+        onSuccess: async (occ) => {
+          setShowModal(false);
+          setForm({ description: '', severity: 'alta', terminalId: '' });
+          navigate(situationRoomPath(occ.id));
+          toast.success(`Emergência ${occ.incNumber} disparada`);
 
-    const notificationEvents = matchingRules.map((rule, idx) => {
-      const entityName = data.entities.find(e => e.id === rule.entityId)?.name || rule.entityId;
-      const contact = data.entities.find(e => e.id === rule.entityId)?.contact || '';
-      return {
-        id: `tl${ts + 2 + idx}`,
-        dateTime: now,
-        type: 'entidade notificada' as const,
-        description: `${entityName} notificada automaticamente${contact ? ` via ${contact}` : ''}${rule.mandatory ? ' [OBRIGATÓRIA]' : ''}`,
-        userName: 'Sistema',
-      };
-    });
-
-    const newNotifications: EntityNotification[] = matchingRules.map((rule, idx) => ({
-      id: `en${ts + idx}`,
-      occurrenceId: occId,
-      entityId: rule.entityId,
-      dateTime: now,
-      status: 'Notificada' as const,
-      mandatory: rule.mandatory,
-    }));
-
-    const newOcc: Occurrence = {
-      id: occId,
-      incNumber,
-      terminalId,
-      dateTime: now,
-      type: 'Emergência',
-      description: form.description,
-      status: 'emergência ativa',
-      criticality: 'alta',
-      severity: form.severity,
-      responsible: user.name,
-      team: '',
-      timeline: [
-        { id: `tl${ts}`, dateTime: now, type: 'ocorrência registrada', description: `[DISPARO DE EMERGÊNCIA] ${form.description}`, userName: user.name },
-        { id: `tl${ts + 1}`, dateTime: now, type: 'plano de emergência ativado', description: `Emergência disparada com severidade ${form.severity.toUpperCase()} — resposta imediata iniciada`, userName: user.name },
-        ...notificationEvents,
-      ],
-    };
-    setData(d => ({
-      ...d,
-      occurrences: [...d.occurrences, newOcc],
-      entityNotifications: [...d.entityNotifications, ...newNotifications],
-    }));
-    setShowModal(false);
-    setForm({ description: '', severity: 'alta', terminalId: '' });
-    navigate(situationRoomPath(newOcc.id));
+          // Eventos complementares na timeline imutável (não bloqueiam a navegação)
+          const matchingRules = notificationRules.filter(r => r.occurrenceType === 'Emergência');
+          try {
+            await occurrencesApi.addTimeline(occ.id, {
+              type: 'plano de emergência ativado',
+              description: `Emergência disparada com severidade ${form.severity.toUpperCase()} — resposta imediata iniciada`,
+            });
+            for (const rule of matchingRules) {
+              const entity = entities.find(e => e.id === rule.entityId);
+              await occurrencesApi.addTimeline(occ.id, {
+                type: 'entidade notificada',
+                description: `${entity?.name || rule.entityId} notificada automaticamente${entity?.contact ? ` via ${entity.contact}` : ''}${rule.mandatory ? ' [OBRIGATÓRIA]' : ''}`,
+              });
+            }
+          } catch {
+            toast.error('Emergência criada, mas houve falha ao registrar eventos de acionamento');
+          }
+        },
+        onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao disparar emergência'),
+      },
+    );
   };
 
   return (
@@ -228,11 +210,11 @@ export function EmergencyDispatchProvider() {
                   </button>
                   <button
                     onClick={handleDispatch}
-                    disabled={!form.description || (user.role === 'admin' && visibleTerminals.length > 1 && !form.terminalId)}
+                    disabled={!form.description || create.isPending || (user.role === 'admin' && visibleTerminals.length > 1 && !form.terminalId)}
                     className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-black uppercase tracking-wider shadow-lg shadow-primary/30 hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    <Siren size={16} />
-                    Disparar Emergência
+                    {create.isPending ? <Loader2 size={16} className="animate-spin" /> : <Siren size={16} />}
+                    {create.isPending ? 'Disparando...' : 'Disparar Emergência'}
                   </button>
                 </div>
               </div>

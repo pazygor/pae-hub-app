@@ -8,4 +8,6 @@ export * from './users';
 export * from './entities';
 export * from './permissions';
 export * from './notification-rules';
+export * from './occurrences';
+export * from './dashboard';
 export * from './hooks';

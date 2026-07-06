@@ -5,6 +5,7 @@ import { usePresentationMode, maskName, maskEmail } from '@/lib/presentation-mod
 import { isMenuItemAccessible, getPackageLabel } from '@/lib/modules';
 import { getAccessLevelMenuFilter, getUserActiveConfig } from '@/lib/access-control';
 import { NAV_CONFIG } from '@/lib/nav-config';
+import { useActiveEmergencies } from '@/api';
 import m1Logo from '@/assets/m1-logo.png';
 
 interface Props {
@@ -17,9 +18,10 @@ const EMERGENCY_MENU_IDS = new Set(['cop', 'occurrences', 'map', 'dashboard']);
 export function AppSidebar({ collapsed }: Props) {
   const { user, data, logout } = useAuth();
   const { presentationMode } = usePresentationMode();
+  const { emergencies } = useActiveEmergencies();
   if (!user) return null;
 
-  const hasActiveEmergency = data.occurrences.some(o => o.status === 'emergência ativa');
+  const hasActiveEmergency = emergencies.length > 0;
 
   // Módulos ativos do terminal vinculado (licenciamento) — fonte única
   const { modules: activeModules, safetySubModules: activeSafetySubs } = getUserActiveConfig(user, data);

@@ -4,6 +4,7 @@ import { ChevronLeft, Siren } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { headerLabelForPath } from '@/lib/nav-config';
 import { PageLoader } from '@/components/common/PageLoader';
+import { useActiveEmergencies } from '@/api';
 
 /**
  * Chrome mobile (Fase 1.D): envolve as telas abertas a partir do painel de
@@ -11,13 +12,12 @@ import { PageLoader } from '@/components/common/PageLoader';
  * sidebar nem header desktop. "← Painel" retorna ao painel de ações (`/`).
  */
 export function MobileShell() {
-  const { user, data } = useAuth();
+  const { user } = useAuth();
+  const { emergencies: activeEmergencies } = useActiveEmergencies();
   const location = useLocation();
   const navigate = useNavigate();
 
   if (!user) return null;
-
-  const activeEmergencies = data.occurrences.filter(o => o.status === 'emergência ativa');
   const title = headerLabelForPath(location.pathname) || 'M1 PAE Hub';
   const roleLabel = user.role === 'admin' ? 'ADMIN' : user.role === 'terminal' ? 'TERMINAL' : 'ENTIDADE';
 
