@@ -15,11 +15,11 @@ export function UsersPage() {
   const { create, update, setStatus } = useUserMutations();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'terminal' as UserRole, linkId: '', accessLevel: '' as AccessLevel | '', tacticalManagerId: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', phone: '', role: 'terminal' as UserRole, linkId: '', accessLevel: '' as AccessLevel | '', tacticalManagerId: '' });
   const saving = create.isPending || update.isPending;
 
-  const openNew = () => { setForm({ name: '', email: '', password: '', role: 'terminal', linkId: '', accessLevel: '', tacticalManagerId: '' }); setEditId(null); setShowForm(true); };
-  const openEdit = (u: AppUser) => { setForm({ name: u.name, email: u.email, password: '', role: u.role, linkId: u.linkId || '', accessLevel: u.accessLevel || '', tacticalManagerId: u.tacticalManagerId || '' }); setEditId(u.id); setShowForm(true); };
+  const openNew = () => { setForm({ name: '', email: '', password: '', phone: '', role: 'terminal', linkId: '', accessLevel: '', tacticalManagerId: '' }); setEditId(null); setShowForm(true); };
+  const openEdit = (u: AppUser) => { setForm({ name: u.name, email: u.email, password: '', phone: u.phone || '', role: u.role, linkId: u.linkId || '', accessLevel: u.accessLevel || '', tacticalManagerId: u.tacticalManagerId || '' }); setEditId(u.id); setShowForm(true); };
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,6 +30,7 @@ export function UsersPage() {
       accessLevel: form.accessLevel || null,
       terminalId: form.role === 'terminal' ? (form.linkId || undefined) : undefined,
       tacticalManagerId: form.tacticalManagerId || null,
+      phone: form.phone || undefined,
     };
     if (form.password) input.password = form.password;
     const onSuccess = () => { setShowForm(false); toast.success(editId ? 'Usuário atualizado' : 'Usuário cadastrado'); };
@@ -128,6 +129,10 @@ export function UsersPage() {
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Senha {editId && <span className="normal-case text-muted-foreground/70">(deixe em branco p/ manter)</span>}</label>
               <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required={!editId} minLength={8} placeholder={editId ? '••••••••' : 'mín. 8 caracteres'} className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Telefone (WhatsApp)</label>
+              <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="(13) 99999-0000" className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Perfil</label>

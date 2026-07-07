@@ -59,6 +59,7 @@ export interface AppUser {
   linkId: string | null;
   accessLevel?: AccessLevel;
   tacticalManagerId?: string;
+  phone?: string;
   allowedModules?: string[];
   allowedTerminals?: string[];
   allowedOccurrenceTypes?: string[];

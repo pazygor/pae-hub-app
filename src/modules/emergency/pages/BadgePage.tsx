@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { IdCard, Phone, Mail, Copy, Check, Building2, User, Shield, Ship } from 'lucide-react';
+import { IdCard, Phone, Mail, Copy, Check, Building2, Shield, Ship, Search, MessageCircle, Siren } from 'lucide-react';
 import { usePresentationMode, maskEmail, maskPhone, maskName } from '@/lib/presentation-mode';
+import { useUserContacts, useTerminals, useEntities } from '@/api';
 
 interface ContactCard {
   name: string;
@@ -9,60 +10,96 @@ interface ContactCard {
   entity: string;
   entityType: 'terminal' | 'entity' | 'admin';
   phone: string;
-  phoneSecondary: string;
   email: string;
 }
 
-export function BadgePage() {
-  const { user, data } = useAuth();
-  const { presentationMode } = usePresentationMode();
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+// Atalhos fixos de emergência (Funcional §3.9)
+const EMERGENCY_SHORTCUTS = [
+  { label: 'Bombeiros', number: '193' },
+  { label: 'Defesa Civil', number: '199' },
+  { label: 'IBAMA (Linha Verde)', number: '0800 61 8080' },
+];
 
-  if (!user) return null;
+/** Converte um telefone BR em link do WhatsApp (wa.me). */
+function whatsappUrl(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  const withCountry = digits.startsWith('55') && digits.length >= 12 ? digits : `55${digits}`;
+  return `https://wa.me/${withCountry}`;
+}
+
+const ACCESS_LABEL: Record<string, string> = {
+  'estratégico': 'Diretoria (Estratégico)',
+  'tático': 'Supervisor (Tático)',
+  'operacional': 'Executor (Operacional)',
+};
+
+export function BadgePage() {
+  const { user } = useAuth();
+  const { presentationMode } = usePresentationMode();
+  // Comunicação rápida sobre cadastros REAIS (GET /users/contacts — todos os papéis)
+  const { data: userContacts = [], isLoading } = useUserContacts();
+  const { data: terminals = [] } = useTerminals();
+  const { data: entities = [] } = useEntities();
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const pm = presentationMode;
 
-  // Build contact cards from all users + terminals + entities
-  const contacts: ContactCard[] = [];
+  const contacts: ContactCard[] = useMemo(() => {
+    const cards: ContactCard[] = [];
 
-  data.users.filter(u => u.role === 'admin').forEach(u => {
-    contacts.push({
-      name: u.name, role: 'Administrador do Sistema', entity: 'M1 PAE Hub', entityType: 'admin',
-      phone: '(13) 3200-0000', phoneSecondary: '(13) 99900-0000', email: u.email,
-    });
-  });
-
-  data.users.filter(u => u.role === 'terminal').forEach(u => {
-    const terminal = data.terminals.find(t => t.id === u.linkId);
-    contacts.push({
-      name: u.name, role: terminal?.responsible === u.name ? 'Responsável pelo Terminal' : 'Operador do Terminal',
-      entity: terminal?.name || 'Terminal', entityType: 'terminal',
-      phone: terminal?.contact || '—', phoneSecondary: '—', email: u.email,
-    });
-  });
-
-  data.users.filter(u => u.role === 'entity').forEach(u => {
-    const entity = data.entities.find(e => e.id === u.linkId);
-    contacts.push({
-      name: u.name, role: `Representante - ${entity?.type || 'Entidade'}`,
-      entity: entity?.name || 'Entidade', entityType: 'entity',
-      phone: entity?.contact || '—', phoneSecondary: '—', email: u.email,
-    });
-  });
-
-  data.terminals.forEach(t => {
-    const alreadyAdded = contacts.some(c => c.name === t.responsible && c.entity === t.name);
-    if (!alreadyAdded) {
-      contacts.push({ name: t.responsible, role: 'Responsável pelo Terminal', entity: t.name, entityType: 'terminal', phone: t.contact, phoneSecondary: '—', email: '' });
+    // 1) Usuários reais — telefone próprio com fallback para o contato do terminal
+    for (const c of userContacts) {
+      if (c.role === 'admin') {
+        cards.push({
+          name: c.name, role: 'Administrador do Sistema', entity: 'M1 PAE Hub', entityType: 'admin',
+          phone: c.phone || '—', email: c.email,
+        });
+      } else if (c.role === 'terminal') {
+        cards.push({
+          name: c.name,
+          role: ACCESS_LABEL[c.accessLevel || ''] || 'Operador do Terminal',
+          entity: c.terminal?.name || 'Terminal', entityType: 'terminal',
+          phone: c.phone || c.terminal?.contact || '—', email: c.email,
+        });
+      } else {
+        cards.push({
+          name: c.name, role: 'Representante de Entidade', entity: 'Entidade Externa', entityType: 'entity',
+          phone: c.phone || '—', email: c.email,
+        });
+      }
     }
-  });
 
-  data.entities.forEach(ent => {
-    const alreadyAdded = contacts.some(c => c.entity === ent.name);
-    if (!alreadyAdded) {
-      contacts.push({ name: ent.name, role: ent.type, entity: ent.name, entityType: 'entity', phone: ent.contact, phoneSecondary: '—', email: '' });
+    // 2) Responsáveis de terminais ainda não listados como usuários
+    for (const t of terminals) {
+      if (t.responsible && !cards.some(c => c.name === t.responsible)) {
+        cards.push({
+          name: t.responsible, role: 'Responsável pelo Terminal', entity: t.name, entityType: 'terminal',
+          phone: t.contact || '—', email: '',
+        });
+      }
     }
-  });
+
+    // 3) Entidades externas ativas (contato institucional)
+    for (const ent of entities) {
+      if (ent.status !== 'Ativo') continue;
+      if (!cards.some(c => c.name === ent.name)) {
+        cards.push({ name: ent.name, role: ent.type, entity: ent.name, entityType: 'entity', phone: ent.contact || '—', email: '' });
+      }
+    }
+
+    return cards;
+  }, [userContacts, terminals, entities]);
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return contacts;
+    const q = search.toLowerCase();
+    return contacts.filter(c =>
+      c.name.toLowerCase().includes(q) || c.role.toLowerCase().includes(q) || c.entity.toLowerCase().includes(q)
+    );
+  }, [contacts, search]);
+
+  if (!user) return null;
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -102,8 +139,27 @@ export function BadgePage() {
         </div>
         <div>
           <h2 className="text-lg font-bold text-foreground">Crachá do PAE</h2>
-          <p className="text-xs text-muted-foreground">Contatos de emergência para comunicação rápida</p>
+          <p className="text-xs text-muted-foreground">Listagem de usuários e contatos para comunicação rápida</p>
         </div>
+      </div>
+
+      {/* Atalhos de emergência (Funcional §3.9) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {EMERGENCY_SHORTCUTS.map(s => (
+          <a
+            key={s.number}
+            href={`tel:${s.number.replace(/\D/g, '')}`}
+            className="flex items-center gap-3 bg-primary/5 border border-primary/25 rounded-xl px-4 py-3 hover:bg-primary/10 transition-colors"
+          >
+            <div className="p-2 bg-primary/10 rounded-lg shrink-0">
+              <Siren size={16} className="text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest truncate">{s.label}</p>
+              <p className="text-base font-black text-primary font-mono-data">{s.number}</p>
+            </div>
+          </a>
+        ))}
       </div>
 
       {pm && (
@@ -115,22 +171,33 @@ export function BadgePage() {
         </div>
       )}
 
-      <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 flex items-start gap-3">
-        <Phone size={16} className="text-primary shrink-0 mt-0.5" />
-        <p className="text-xs text-muted-foreground">
-          Este módulo centraliza os contatos críticos para comunicação em caso de emergência. 
-          Utilize os botões de ação rápida para <strong className="text-foreground">ligar</strong>, <strong className="text-foreground">enviar e-mail</strong> ou <strong className="text-foreground">copiar</strong> as informações de contato.
-        </p>
+      {/* Busca */}
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar por nome, função ou vínculo..."
+          className="w-full pl-9 pr-3 py-2.5 bg-card border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+        />
       </div>
 
+      {isLoading && (
+        <p className="text-sm text-muted-foreground text-center py-8">Carregando contatos...</p>
+      )}
+
+      {!isLoading && filtered.length === 0 && (
+        <p className="text-sm text-muted-foreground text-center py-8">Nenhum contato encontrado.</p>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {contacts.map((contact, idx) => {
+        {filtered.map((contact, idx) => {
           const cardId = `${contact.name}-${idx}`;
           const displayName = pm ? maskName(contact.name) : contact.name;
           const displayPhone = pm ? maskPhone(contact.phone) : contact.phone;
-          const displayPhoneSec = pm ? maskPhone(contact.phoneSecondary) : contact.phoneSecondary;
           const displayEmail = pm ? maskEmail(contact.email) : contact.email;
           const contactText = `${contact.name} | ${contact.role} | ${contact.entity} | Tel: ${contact.phone} | Email: ${contact.email}`;
+          const hasPhone = contact.phone !== '—' && contact.phone.replace(/\D/g, '').length >= 8;
 
           return (
             <div key={cardId} className="bg-card border border-border rounded-xl overflow-hidden hover:shadow-lg hover:shadow-primary/5 transition-all group">
@@ -154,7 +221,6 @@ export function BadgePage() {
                   <div className="flex items-center gap-2 text-xs">
                     <Phone size={12} className="text-muted-foreground shrink-0" />
                     <span className="text-foreground font-medium">{displayPhone}</span>
-                    {displayPhoneSec !== '—' && <span className="text-muted-foreground">/ {displayPhoneSec}</span>}
                   </div>
                   {contact.email && (
                     <div className="flex items-center gap-2 text-xs">
@@ -164,10 +230,15 @@ export function BadgePage() {
                   )}
                 </div>
                 <div className="flex gap-2 pt-2">
-                  {contact.phone !== '—' && (
-                    <a href={pm ? '#' : `tel:${contact.phone.replace(/\D/g, '')}`} onClick={pm ? (e) => e.preventDefault() : undefined}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-success/10 text-success rounded-lg text-[11px] font-bold hover:bg-success/20 transition-colors border border-success/20">
-                      <Phone size={12} /> Ligar
+                  {hasPhone && (
+                    <a
+                      href={pm ? '#' : whatsappUrl(contact.phone)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={pm ? (e) => e.preventDefault() : undefined}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-success/10 text-success rounded-lg text-[11px] font-bold hover:bg-success/20 transition-colors border border-success/20"
+                    >
+                      <MessageCircle size={12} /> WhatsApp
                     </a>
                   )}
                   {contact.email && (

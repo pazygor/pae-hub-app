@@ -32,6 +32,7 @@ function adapt(u: ApiUser): AppUser {
     linkId: u.terminalId ?? null,
     accessLevel: (u.accessLevel as AccessLevel | null) ?? undefined,
     tacticalManagerId: u.tacticalManagerId ?? undefined,
+    phone: u.phone ?? undefined,
     allowedModules: u.allowedModules,
     allowedTerminals: u.allowedTerminals,
     allowedOccurrenceTypes: u.allowedOccurrenceTypes,
@@ -54,6 +55,18 @@ export interface UserInput {
   allowedOccurrenceTypes?: string[];
 }
 
+/** Contato do Crachá do PAE (GET /users/contacts — acessível a qualquer papel). */
+export interface UserContact {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: string;
+  accessLevel: string | null;
+  terminalId: string | null;
+  terminal: { id: string; name: string; contact: string | null; responsible: string | null } | null;
+}
+
 export const usersApi = {
   list: async (): Promise<AppUser[]> => {
     const res = await http.get<{ data: ApiUser[] } | ApiUser[]>('/users?limit=200');
@@ -68,4 +81,6 @@ export const usersApi = {
   // Não há delete de usuário no back; inativação é via status (soft delete).
   setStatus: (id: string, status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'): Promise<unknown> =>
     http.put(`/users/${id}/status`, { status }),
+  // Crachá do PAE — comunicação rápida (todos os papéis).
+  contacts: (): Promise<UserContact[]> => http.get<UserContact[]>('/users/contacts'),
 };

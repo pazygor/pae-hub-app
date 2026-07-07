@@ -48,6 +48,11 @@ export function useUsers(enabled = true) {
   return useQuery({ queryKey: USERS_KEY, queryFn: usersApi.list, enabled });
 }
 
+/** Crachá do PAE — contatos para comunicação rápida (qualquer papel). */
+export function useUserContacts() {
+  return useQuery({ queryKey: ['user-contacts'], queryFn: usersApi.contacts });
+}
+
 export function useUserMutations() {
   const qc = useQueryClient();
   const onSuccess = () => qc.invalidateQueries({ queryKey: USERS_KEY });
