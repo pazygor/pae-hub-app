@@ -68,7 +68,10 @@ export function EmergencyDispatchProvider() {
         type: 'Emergência',
         description: form.description,
         status: 'emergência ativa',
-        criticality: 'alta',
+        // A criticidade segue o Grau de Severidade escolhido no despacho —
+        // é ela que os badges das telas exibem (bug reportado em 07/07:
+        // severidade "baixa" aparecia como "alta" por estar fixada aqui).
+        criticality: form.severity,
         severity: form.severity,
         terminalId,
       },
@@ -138,7 +141,7 @@ export function EmergencyDispatchProvider() {
                 <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 flex items-center gap-2">
                   <Siren size={16} className="text-primary shrink-0" />
                   <p className="text-xs text-primary font-medium">
-                    Esta ação criará uma ocorrência com criticidade <strong>Alta</strong> e status <strong>Emergência Ativa</strong>. A Sala de Situação será aberta automaticamente.
+                    Esta ação criará uma ocorrência com status <strong>Emergência Ativa</strong> e criticidade <strong className="capitalize">{form.severity}</strong> (conforme o grau escolhido abaixo). A Sala de Situação será aberta automaticamente.
                   </p>
                 </div>
 
