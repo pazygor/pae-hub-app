@@ -3,7 +3,14 @@ import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { Terminal } from '@/lib/types';
 import { useTerminals, useTerminalMutations } from '@/api';
-import { Plus, X, Loader2 } from 'lucide-react';
+import { Plus, X, Loader2, Trash2 } from 'lucide-react';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
+
+const STATUS_OPTIONS: Terminal['status'][] = ['Ativo', 'Inativo', 'Revisão'];
 
 export function TerminalsPage() {
   const { user } = useAuth();
@@ -11,12 +18,14 @@ export function TerminalsPage() {
   const { create, update, remove: removeMut } = useTerminalMutations();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Terminal | null>(null);
   const [form, setForm] = useState<Omit<Terminal, 'id'>>({ name: '', responsible: '', contact: '', location: '', lat: 0, lng: 0, status: 'Ativo' });
 
   // A API já devolve os terminais no escopo do papel (admin: todos).
   const visibleTerminals = terminals;
   const isAdmin = user?.role === 'admin';
   const saving = create.isPending || update.isPending;
+  const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
 
   const openNew = () => {
     setForm({ name: '', responsible: '', contact: '', location: '', lat: 0, lng: 0, status: 'Ativo' });
@@ -32,18 +41,23 @@ export function TerminalsPage() {
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.name.trim()) { toast.error('Informe o nome do terminal'); return; }
+    if (!form.responsible.trim()) { toast.error('Informe o responsável'); return; }
+    if (!form.contact.trim()) { toast.error('Informe o contato'); return; }
+    if (!form.location.trim()) { toast.error('Informe a localização'); return; }
     const onSuccess = () => { setShowForm(false); toast.success(editId ? 'Terminal atualizado' : 'Terminal cadastrado'); };
-    const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha ao salvar terminal');
     if (editId) update.mutate({ id: editId, form }, { onSuccess, onError });
     else create.mutate(form, { onSuccess, onError });
   };
 
-  const remove = (id: string) => {
-    if (!confirm('Inativar este terminal?')) return;
-    removeMut.mutate(id, {
-      onSuccess: () => toast.success('Terminal inativado'),
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao inativar'),
+  const confirmInactivate = () => {
+    if (!deleteTarget) return;
+    const name = deleteTarget.name;
+    removeMut.mutate(deleteTarget.id, {
+      onSuccess: () => toast.success(`Terminal ${name} inativado`),
+      onError,
     });
+    setDeleteTarget(null);
   };
 
   return (
@@ -51,7 +65,7 @@ export function TerminalsPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-foreground">Gestão de Terminais</h2>
         {isAdmin && (
-          <button onClick={openNew} className="flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-2 rounded-md font-bold hover:opacity-90 transition-opacity">
+          <button onClick={openNew} className="flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-2 rounded-md font-bold cursor-pointer hover:opacity-90 transition-opacity">
             <Plus size={14} /> Novo Terminal
           </button>
         )}
@@ -61,24 +75,24 @@ export function TerminalsPage() {
         <div className="bg-card border border-border rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-sm">{editId ? 'Editar Terminal' : 'Novo Terminal'}</h3>
-            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
+            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X size={18} /></button>
           </div>
           <form onSubmit={save} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Nome</label>
-              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Nome *</label>
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Responsável</label>
-              <input value={form.responsible} onChange={e => setForm(f => ({ ...f, responsible: e.target.value }))} required className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Responsável *</label>
+              <input value={form.responsible} onChange={e => setForm(f => ({ ...f, responsible: e.target.value }))} className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Contato</label>
-              <input value={form.contact} onChange={e => setForm(f => ({ ...f, contact: e.target.value }))} required className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Contato *</label>
+              <input value={form.contact} onChange={e => setForm(f => ({ ...f, contact: e.target.value }))} className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Localização</label>
-              <input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} required className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Localização *</label>
+              <input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Latitude</label>
@@ -90,14 +104,15 @@ export function TerminalsPage() {
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Status</label>
-              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as Terminal['status'] }))} className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary">
-                <option>Ativo</option>
-                <option>Inativo</option>
-                <option>Revisão</option>
-              </select>
+              <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v as Terminal['status'] }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s} className="cursor-pointer">{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-end">
-              <button type="submit" disabled={saving} className="w-full py-2 bg-primary text-primary-foreground rounded-md text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-2">
+              <button type="submit" disabled={saving} className="w-full py-2 bg-primary text-primary-foreground rounded-md text-sm font-bold cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-2">
                 {saving && <Loader2 size={14} className="animate-spin" />}
                 {editId ? 'Salvar Alterações' : 'Cadastrar Terminal'}
               </button>
@@ -138,9 +153,9 @@ export function TerminalsPage() {
                     }`}>{t.status}</span>
                   </td>
                   {isAdmin && (
-                    <td className="px-4 py-3 text-right space-x-2">
-                      <button onClick={() => openEdit(t)} className="text-primary font-bold text-xs hover:underline">Editar</button>
-                      <button onClick={() => remove(t.id)} className="text-primary font-bold text-xs hover:underline">Excluir</button>
+                    <td className="px-4 py-3 text-right space-x-3">
+                      <button onClick={() => openEdit(t)} className="text-primary font-bold text-xs cursor-pointer hover:underline">Editar</button>
+                      <button onClick={() => setDeleteTarget(t)} className="text-primary font-bold text-xs cursor-pointer hover:underline">Inativar</button>
                     </td>
                   )}
                 </tr>
@@ -152,6 +167,29 @@ export function TerminalsPage() {
           </table>
         </div>
       </div>
+
+      {/* Confirmação de inativação (AlertDialog — substitui o confirm() nativo) */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="p-1.5 bg-primary/10 rounded-lg"><Trash2 size={16} className="text-primary" /></span>
+              Inativar terminal?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              O terminal <strong className="text-foreground font-semibold">{deleteTarget?.name}</strong> deixará de
+              aparecer nas operações (ocorrências, mapa, dashboard). Os dados históricos são preservados e ele pode
+              ser reativado editando o status.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmInactivate} className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90">
+              Inativar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

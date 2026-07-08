@@ -7,11 +7,22 @@ import { Occurrence, OccurrenceStatus, OccurrenceCriticality, TimelineEventType 
 import { Plus, Siren, Trash2, Clock, ChevronDown, ChevronUp, Paperclip, User, AlertTriangle, Bell, CheckCircle, Play, RefreshCw, Filter, Timer, Radio, Download, Loader2 } from 'lucide-react';
 import { EmergencyResponseSection } from '../components/EmergencyResponseSection';
 import { generateIncidentPDF } from '../components/generateIncidentPDF';
-import { useOccurrences, useOccurrenceMutations, useTerminals, useEntities, usePermissions, useRisks, usePlans, useDocuments } from '@/api';
+import { useOccurrences, useOccurrenceMutations, useTerminals, useEntities, usePermissions, useRisks, usePlans, useDocuments, useUsers } from '@/api';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 
 const EVENT_TYPES: TimelineEventType[] = [
   'ocorrência registrada', 'equipe acionada', 'plano de emergência ativado',
   'entidade notificada', 'ação executada', 'atualização de status', 'ocorrência resolvida',
+];
+
+// 8 tipos oficiais (Funcional §3.4 / espelha Níveis de Acesso).
+const OCCURRENCE_TYPES = [
+  'Princípio de incêndio', 'Vazamento', 'Emergência', 'Explosão',
+  'Queda de carga', 'Acidente de trabalho', 'Contaminação ambiental', 'Outros',
 ];
 
 const CRITICALITY_OPTIONS: OccurrenceCriticality[] = ['baixa', 'média', 'alta', 'crítica'];
@@ -80,9 +91,11 @@ export function OccurrencesPage() {
   const { data: risks = [] } = useRisks();
   const { data: plans = [] } = usePlans();
   const { data: documents = [] } = useDocuments();
+  const { data: users = [] } = useUsers(user?.role !== 'entity'); // Responsável (entity não cria ocorrência)
   const { create, setStatus, addTimeline, remove } = useOccurrenceMutations();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ type: '', description: '', criticality: 'média' as OccurrenceCriticality, responsible: '', team: '', terminalId: '' });
+  const [deleteTarget, setDeleteTarget] = useState<Occurrence | null>(null);
+  const [form, setForm] = useState({ type: '', description: '', criticality: 'média' as OccurrenceCriticality, responsible: '', terminalId: '' });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [timelineForm, setTimelineForm] = useState<{ type: TimelineEventType; description: string; attachment: string }>({ type: 'ação executada', description: '', attachment: '' });
   const [showTimelineForm, setShowTimelineForm] = useState<string | null>(null);
@@ -109,8 +122,22 @@ export function OccurrencesPage() {
   // Dados reais para o PDF (Fase 5a completa: riscos/planos/docs também da API)
   const pdfData = { ...data, terminals, entities, permissions, risks, plans, documents };
 
+  // Tipos que o usuário pode abrir (Níveis de Acesso); vazio = todos os 8.
+  const availableTypes = useMemo(() => {
+    const allowed = user?.allowedOccurrenceTypes ?? [];
+    return allowed.length ? OCCURRENCE_TYPES.filter(t => allowed.includes(t)) : OCCURRENCE_TYPES;
+  }, [user?.allowedOccurrenceTypes]);
+
+  // Responsável: usuários do terminal onde a ocorrência será criada.
+  const responsibleTerminalId = user?.role === 'admin' ? form.terminalId : (user?.linkId ?? '');
+  const responsibleOptions = useMemo(
+    () => users.filter(u => u.role === 'terminal' && (!responsibleTerminalId || u.linkId === responsibleTerminalId)),
+    [users, responsibleTerminalId],
+  );
+
   const handleAdd = () => {
-    if (!form.type || !form.description) return;
+    if (!form.type) { toast.error('Selecione o tipo de ocorrência'); return; }
+    if (!form.description.trim()) { toast.error('Informe a descrição da ocorrência'); return; }
     if (user.role === 'admin' && !form.terminalId) { toast.error('Selecione o terminal'); return; }
     create.mutate(
       {
@@ -118,12 +145,11 @@ export function OccurrencesPage() {
         description: form.description,
         criticality: form.criticality,
         responsible: form.responsible || undefined,
-        team: form.team || undefined,
         terminalId: user.role === 'admin' ? form.terminalId : undefined,
       },
       {
         onSuccess: (occ) => {
-          setForm({ type: '', description: '', criticality: 'média', responsible: '', team: '', terminalId: '' });
+          setForm({ type: '', description: '', criticality: 'média', responsible: '', terminalId: '' });
           setShowForm(false);
           toast.success(`Ocorrência ${occ.incNumber} registrada`);
         },
@@ -136,9 +162,14 @@ export function OccurrencesPage() {
     setStatus.mutate({ id, status }, { onError });
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm('Remover esta ocorrência?')) return;
-    remove.mutate(id, { onSuccess: () => toast.success('Ocorrência removida'), onError });
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    const inc = deleteTarget.incNumber;
+    remove.mutate(deleteTarget.id, {
+      onSuccess: () => toast.success(`Ocorrência ${inc} removida`),
+      onError,
+    });
+    setDeleteTarget(null);
   };
 
   const addTimelineEvent = (occId: string) => {
@@ -195,28 +226,37 @@ export function OccurrencesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Terminal</label>
-              <select value={filters.terminalId} onChange={e => setFilters(f => ({ ...f, terminalId: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-xs text-foreground">
-                <option value="">Todos</option>
-                {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              <Select value={filters.terminalId || 'all'} onValueChange={v => setFilters(f => ({ ...f, terminalId: v === 'all' ? '' : v }))}>
+                <SelectTrigger className="cursor-pointer text-xs h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="cursor-pointer">Todos</SelectItem>
+                  {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Status</label>
-              <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value as OccurrenceStatus | '' }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-xs text-foreground">
-                <option value="">Todos</option>
-                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <Select value={filters.status || 'all'} onValueChange={v => setFilters(f => ({ ...f, status: (v === 'all' ? '' : v) as OccurrenceStatus | '' }))}>
+                <SelectTrigger className="cursor-pointer text-xs h-9 capitalize"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="cursor-pointer">Todos</SelectItem>
+                  {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s} className="cursor-pointer capitalize">{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Criticidade</label>
-              <select value={filters.criticality} onChange={e => setFilters(f => ({ ...f, criticality: e.target.value as OccurrenceCriticality | '' }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-xs text-foreground">
-                <option value="">Todas</option>
-                {CRITICALITY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              <Select value={filters.criticality || 'all'} onValueChange={v => setFilters(f => ({ ...f, criticality: (v === 'all' ? '' : v) as OccurrenceCriticality | '' }))}>
+                <SelectTrigger className="cursor-pointer text-xs h-9 capitalize"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="cursor-pointer">Todas</SelectItem>
+                  {CRITICALITY_OPTIONS.map(c => <SelectItem key={c} value={c} className="cursor-pointer capitalize">{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">A partir de</label>
-              <input type="date" value={filters.dateFrom} onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-xs text-foreground" />
+              <input type="date" value={filters.dateFrom} onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-md text-xs text-foreground h-9 cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
             </div>
           </div>
           {activeFilterCount > 0 && (
@@ -227,29 +267,67 @@ export function OccurrencesPage() {
 
       {/* New occurrence form */}
       {showForm && (
-        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input placeholder="Tipo de ocorrência" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground" />
-            <select value={form.criticality} onChange={e => setForm(f => ({ ...f, criticality: e.target.value as OccurrenceCriticality }))} className="px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground">
-              {CRITICALITY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Tipo de Ocorrência *</label>
+              <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o tipo..." /></SelectTrigger>
+                <SelectContent>
+                  {availableTypes.map(t => <SelectItem key={t} value={t} className="cursor-pointer">{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Grau de Criticidade</label>
+              <Select value={form.criticality} onValueChange={v => setForm(f => ({ ...f, criticality: v as OccurrenceCriticality }))}>
+                <SelectTrigger className="cursor-pointer capitalize"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CRITICALITY_OPTIONS.map(c => <SelectItem key={c} value={c} className="cursor-pointer capitalize">{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
           {user.role === 'admin' && (
-            <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground">
-              <option value="">Selecione o terminal...</option>
-              {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminal</label>
+              <Select value={form.terminalId} onValueChange={v => setForm(f => ({ ...f, terminalId: v, responsible: '' }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
+                <SelectContent>
+                  {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           )}
-          <textarea placeholder="Descrição" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground min-h-[60px]" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input placeholder="Responsável" value={form.responsible} onChange={e => setForm(f => ({ ...f, responsible: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground" />
-            <input placeholder="Equipe responsável" value={form.team} onChange={e => setForm(f => ({ ...f, team: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground" />
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Descrição *</label>
+            <textarea placeholder="Descreva a ocorrência..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground min-h-[70px] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
           </div>
-          <div className="flex gap-2">
-            <button onClick={handleAdd} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5">
+
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Responsável <span className="text-muted-foreground/60 normal-case font-normal">(opcional — padrão: você)</span></label>
+            <Select
+              value={form.responsible}
+              onValueChange={v => setForm(f => ({ ...f, responsible: v }))}
+              disabled={user.role === 'admin' && !form.terminalId}
+            >
+              <SelectTrigger className="cursor-pointer">
+                <SelectValue placeholder={user.role === 'admin' && !form.terminalId ? 'Selecione o terminal primeiro' : 'Selecione o responsável...'} />
+              </SelectTrigger>
+              <SelectContent>
+                {responsibleOptions.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum usuário no terminal</div>}
+                {responsibleOptions.map(u => <SelectItem key={u.id} value={u.name} className="cursor-pointer">{u.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button onClick={handleAdd} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity">
               {create.isPending && <Loader2 size={12} className="animate-spin" />} Registrar
             </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg">Cancelar</button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
           </div>
         </div>
       )}
@@ -376,7 +454,7 @@ export function OccurrencesPage() {
                     <button onClick={() => changeStatus(o.id, 'resolvido')} className="px-3 py-1.5 text-[10px] font-bold bg-success/10 text-success rounded-lg hover:bg-success/20 transition-colors">Resolver</button>
                   )}
                   {canCreate && (
-                    <button onClick={() => handleDelete(o.id)} className="text-muted-foreground hover:text-primary transition-colors p-1.5 ml-auto"><Trash2 size={14} /></button>
+                    <button onClick={() => setDeleteTarget(o)} className="text-muted-foreground hover:text-primary transition-colors p-1.5 ml-auto cursor-pointer"><Trash2 size={14} /></button>
                   )}
                 </div>
               </div>
@@ -452,6 +530,32 @@ export function OccurrencesPage() {
           );
         })}
       </div>
+
+      {/* Confirmação de remoção (AlertDialog — substitui o confirm() nativo) */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="p-1.5 bg-primary/10 rounded-lg"><Trash2 size={16} className="text-primary" /></span>
+              Remover ocorrência?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              A ocorrência <strong className="text-foreground font-semibold">{deleteTarget?.incNumber}</strong>
+              {deleteTarget?.type ? <> — {deleteTarget.type}</> : null} será removida da listagem.
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
