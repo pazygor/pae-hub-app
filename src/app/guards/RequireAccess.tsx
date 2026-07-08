@@ -1,17 +1,14 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
-import { getAccessLevelMenuFilter, getUserActiveConfig } from '@/lib/access-control';
+import { isMenuAllowedForUser, getUserActiveConfig } from '@/lib/access-control';
 import { isMenuItemAccessible } from '@/lib/modules';
 import { NAV_CONFIG, menuIdForPath } from '@/lib/nav-config';
 
 /**
- * Guard de autorização por rota — substitui o antigo `guardedSetView` do
- * PAESystem, agora protegendo também acesso direto por URL. Aplica, na ordem,
- * as mesmas regras do menu:
- *   1. papel (roles do item de navegação);
- *   2. módulos permitidos por usuário (allowedModules);
- *   3. nível de acesso (estratégico/tático/operacional);
- *   4. licenciamento de módulos do terminal (Response/Safety).
+ * Guard de autorização por rota — protege também o acesso direto por URL,
+ * espelhando exatamente as regras do menu (AppSidebar):
+ *   1. autoridade dos toggles de Níveis de Acesso (papel/nível para o resto);
+ *   2. licenciamento de módulos do terminal (Response/Safety).
  * Rota bloqueada → redireciona para /meu-painel (acessível a todos os perfis).
  */
 export function RequireAccess() {
@@ -29,14 +26,9 @@ export function RequireAccess() {
   if (!item) return <Outlet />;
 
   const blocked = (() => {
-    // 1. Papel
-    if (!item.roles.includes(user.role)) return true;
-    // 2. Módulos permitidos por usuário
-    if (user.role !== 'admin' && user.allowedModules && !user.allowedModules.includes(menuId)) return true;
-    // 3. Nível de acesso
-    const accessFilter = getAccessLevelMenuFilter(user);
-    if (accessFilter && !accessFilter.has(menuId)) return true;
-    // 4. Licenciamento do terminal
+    // 1. Autoridade dos toggles de Níveis de Acesso (papel/nível para o resto)
+    if (!isMenuAllowedForUser(user, menuId, item.roles)) return true;
+    // 2. Licenciamento do terminal (Pacotes do Sistema)
     const { modules, safetySubModules } = getUserActiveConfig(user, data);
     if (user.role !== 'admin' && !isMenuItemAccessible(menuId, modules, safetySubModules)) return true;
     return false;

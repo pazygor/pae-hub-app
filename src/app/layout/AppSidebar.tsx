@@ -3,7 +3,7 @@ import { LogOut, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { usePresentationMode, maskName, maskEmail } from '@/lib/presentation-mode';
 import { isMenuItemAccessible, getPackageLabel } from '@/lib/modules';
-import { getAccessLevelMenuFilter, getUserActiveConfig } from '@/lib/access-control';
+import { isMenuAllowedForUser, getUserActiveConfig } from '@/lib/access-control';
 import { NAV_CONFIG } from '@/lib/nav-config';
 import { useActiveEmergencies } from '@/api';
 import m1Logo from '@/assets/m1-logo.png';
@@ -26,13 +26,11 @@ export function AppSidebar({ collapsed }: Props) {
   // Módulos ativos do terminal vinculado (licenciamento) — fonte única
   const { modules: activeModules, safetySubModules: activeSafetySubs } = getUserActiveConfig(user, data);
 
-  const accessLevelFilter = getAccessLevelMenuFilter(user);
-
   const filtered = NAV_CONFIG.filter(item => {
-    if (!item.roles.includes(user.role)) return false;
-    if (user.role !== 'admin' && user.allowedModules && !user.allowedModules.includes(item.id)) return false;
+    // Autoridade dos toggles de Níveis de Acesso (papel/nível para o resto)
+    if (!isMenuAllowedForUser(user, item.id, item.roles)) return false;
+    // Licenciamento do terminal (Pacotes do Sistema)
     if (user.role !== 'admin' && !isMenuItemAccessible(item.id, activeModules, activeSafetySubs)) return false;
-    if (accessLevelFilter && !accessLevelFilter.has(item.id)) return false;
     return true;
   });
 

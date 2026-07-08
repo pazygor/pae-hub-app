@@ -21,6 +21,8 @@ export interface ApiAuthUser {
   organizationName?: string;
   avatarUrl: string | null;
   allowedModules?: string[];
+  allowedTerminals?: string[];
+  allowedOccurrenceTypes?: string[];
   permissions: string[];
 }
 

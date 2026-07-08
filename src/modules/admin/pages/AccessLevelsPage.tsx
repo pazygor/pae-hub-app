@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { AppUser, AccessLevel, ALL_MODULES, MODULE_LABELS, ModuleId } from '@/lib/types';
-import { ShieldCheck, User, ChevronDown, ChevronUp, Check, X, Ship, Siren, Loader2 } from 'lucide-react';
+import { ShieldCheck, User, ChevronDown, ChevronUp, Check, X, Ship, Siren, Loader2, Lock } from 'lucide-react';
 import { useUsers, useTerminals, useUserMutations, UserInput } from '@/api';
 
 const ACCESS_LEVELS: { value: AccessLevel; label: string; description: string; color: string }[] = [
@@ -226,23 +226,33 @@ export function AccessLevelsPage() {
 
                   {/* Terminal Restrictions */}
                   <div>
-                    <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">
+                    <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
                       Terminais Visíveis ({userTerminals.length}/{terminals.length})
                     </label>
+                    {u.role === 'terminal' && (
+                      <p className="text-[10px] text-muted-foreground mb-2">
+                        O terminal de vínculo é <strong>sempre visível</strong> (cadeado); os demais são adicionais.
+                      </p>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
                       {terminals.map(terminal => {
-                        const isAllowed = userTerminals.includes(terminal.id);
+                        const isHome = u.role === 'terminal' && terminal.id === u.linkId;
+                        const isAllowed = isHome || userTerminals.includes(terminal.id);
                         return (
                           <button
                             key={terminal.id}
-                            onClick={() => toggleTerminal(u.id, terminal.id)}
+                            onClick={() => { if (!isHome) toggleTerminal(u.id, terminal.id); }}
+                            disabled={isHome}
+                            title={isHome ? 'Terminal de vínculo — sempre visível' : undefined}
                             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium transition-all border ${
-                              isAllowed
-                                ? 'bg-accent/10 text-accent border-accent/20'
-                                : 'bg-secondary/50 text-muted-foreground border-border line-through opacity-60'
+                              isHome
+                                ? 'bg-accent/15 text-accent border-accent/30 cursor-default'
+                                : isAllowed
+                                  ? 'bg-accent/10 text-accent border-accent/20'
+                                  : 'bg-secondary/50 text-muted-foreground border-border line-through opacity-60'
                             }`}
                           >
-                            {isAllowed ? <Ship size={12} /> : <X size={12} />}
+                            {isHome ? <Lock size={12} /> : isAllowed ? <Ship size={12} /> : <X size={12} />}
                             {terminal.name}
                           </button>
                         );

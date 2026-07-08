@@ -133,6 +133,39 @@ export function getAccessLevelMenuFilter(user: AppUser | null): Set<string> | nu
 }
 
 /**
+ * Módulos que a tela "Níveis de Acesso" controla por usuário (allowedModules).
+ * Precisa espelhar RESTRICTABLE_MODULES da AccessLevelsPage.
+ */
+export const RESTRICTABLE_MODULE_IDS = new Set<string>([
+  'cop', 'dashboard', 'terminals', 'risks', 'plans', 'occurrences', 'map', 'documents', 'badge', 'about',
+]);
+
+/**
+ * Decide se um item de menu é visível para o usuário (autoridade dos toggles).
+ *
+ * Regra (decisão do gestor, 2026-07-07 — "vale o que está em Níveis de Acesso"):
+ * - admin vê tudo;
+ * - para os módulos restringíveis, quando o usuário tem allowedModules preenchido,
+ *   a lista É a autoridade — sobrepõe papel e conjunto do nível (ex.: liberar
+ *   "Terminais" a um estratégico);
+ * - para os demais itens (Meu Painel, Orquestração, AI Command, config de admin…),
+ *   segue papel + conjunto do nível (a tela não os controla).
+ */
+export function isMenuAllowedForUser(user: AppUser | null, itemId: string, itemRoles: string[]): boolean {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+
+  const hasCustomModules = (user.allowedModules?.length ?? 0) > 0;
+  if (hasCustomModules && RESTRICTABLE_MODULE_IDS.has(itemId)) {
+    return user.allowedModules!.includes(itemId); // toggle manda
+  }
+
+  if (!itemRoles.includes(user.role)) return false;
+  const levelFilter = getAccessLevelMenuFilter(user);
+  return !levelFilter || levelFilter.has(itemId);
+}
+
+/**
  * Get users visible to the current user based on hierarchy:
  * - Admin: all users
  * - Estratégico: all users of the same terminal/entity
