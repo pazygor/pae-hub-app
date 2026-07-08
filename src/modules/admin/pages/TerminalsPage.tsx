@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { Terminal } from '@/lib/types';
-import { useTerminals, useTerminalMutations, geocodingApi, lookupCep } from '@/api';
+import { useTerminals, useTerminalMutations, useUsers, geocodingApi, lookupCep } from '@/api';
 import { formatPhoneBR, formatCEP } from '@/lib/masks';
 import { Plus, X, Loader2, Trash2, MapPin, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
@@ -23,6 +23,7 @@ const EMPTY: Omit<Terminal, 'id'> = {
 export function TerminalsPage() {
   const { user } = useAuth();
   const { data: terminals = [], isLoading, isError } = useTerminals();
+  const { data: users = [] } = useUsers();
   const { create, update, remove: removeMut } = useTerminalMutations();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -35,6 +36,13 @@ export function TerminalsPage() {
   const saving = create.isPending || update.isPending;
   const coordsOk = !!(form.lat && form.lng);
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
+
+  // Responsável: usuários de terminal da organização (o vínculo é só informativo
+  // — o terminal deste form pode ainda não existir, então não filtramos por ele).
+  const responsibleOptions = users
+    .filter(u => u.role === 'terminal')
+    .map(u => ({ name: u.name, terminalName: terminals.find(t => t.id === u.linkId)?.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const openNew = () => { setForm(EMPTY); setEditId(null); setShowForm(true); };
   const openEdit = (t: Terminal) => {
@@ -133,7 +141,17 @@ export function TerminalsPage() {
               </div>
               <div>
                 <label className={labelCls}>Responsável *</label>
-                <input value={form.responsible} onChange={e => setForm(f => ({ ...f, responsible: e.target.value }))} className={inputCls} />
+                <Select value={form.responsible || undefined} onValueChange={v => setForm(f => ({ ...f, responsible: v }))}>
+                  <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o responsável..." /></SelectTrigger>
+                  <SelectContent>
+                    {responsibleOptions.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum usuário de terminal cadastrado</div>}
+                    {responsibleOptions.map(o => (
+                      <SelectItem key={o.name} value={o.name} className="cursor-pointer">
+                        {o.name}{o.terminalName ? <span className="text-muted-foreground"> — {o.terminalName}</span> : null}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <label className={labelCls}>Contato *</label>

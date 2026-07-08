@@ -3,7 +3,9 @@ import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { AppUser, UserRole, AccessLevel } from '@/lib/types';
 import { Plus, X, Loader2, Trash2 } from 'lucide-react';
+import { PasswordInput } from '@/components/common/PasswordInput';
 import { usePresentationMode, maskEmail, maskName } from '@/lib/presentation-mode';
+import { formatPhoneBR } from '@/lib/masks';
 import { getVisibleUsers, canManage } from '@/lib/access-control';
 import { useUsers, useTerminals, useEntities, useUserMutations, UserInput } from '@/api';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
@@ -33,7 +35,7 @@ export function UsersPage() {
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
 
   const openNew = () => { setForm({ name: '', email: '', password: '', phone: '', role: 'terminal', linkId: '', accessLevel: '', tacticalManagerId: '' }); setEditId(null); setShowForm(true); };
-  const openEdit = (u: AppUser) => { setForm({ name: u.name, email: u.email, password: '', phone: u.phone || '', role: u.role, linkId: u.linkId || '', accessLevel: u.accessLevel || '', tacticalManagerId: u.tacticalManagerId || '' }); setEditId(u.id); setShowForm(true); };
+  const openEdit = (u: AppUser) => { setForm({ name: u.name, email: u.email, password: '', phone: formatPhoneBR(u.phone || ''), role: u.role, linkId: u.linkId || '', accessLevel: u.accessLevel || '', tacticalManagerId: u.tacticalManagerId || '' }); setEditId(u.id); setShowForm(true); };
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,11 +151,11 @@ export function UsersPage() {
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Senha {editId ? <span className="normal-case text-muted-foreground/70">(deixe em branco p/ manter)</span> : '*'}</label>
-              <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder={editId ? '••••••••' : 'mín. 8 caracteres'} className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+              <PasswordInput value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder={editId ? '••••••••' : 'mín. 8 caracteres'} className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Telefone (WhatsApp)</label>
-              <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="(13) 99999-0000" className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+              <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: formatPhoneBR(e.target.value) }))} placeholder="(13) 99999-0000" inputMode="tel" className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Perfil</label>

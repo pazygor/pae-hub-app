@@ -17,6 +17,24 @@ export function formatPhoneBR(value: string): string {
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 }
 
+/**
+ * Máscara "inteligente" de contato institucional (Entidades): reconhece
+ * números curtos de emergência (193, 199...) e 0800/0300/0500, que NÃO devem
+ * levar a máscara de telefone padrão; nos demais casos, aplica formatPhoneBR.
+ */
+export function formatContactBR(value: string): string {
+  const d = value.replace(/\D/g, '');
+  if (d.length <= 4) return d; // número curto de emergência (193, 199, 190...)
+  if (/^(0800|0300|0500)/.test(d)) {
+    const prefix = d.slice(0, 4);
+    const rest = d.slice(4, 11);
+    if (rest.length <= 3) return `${prefix}-${rest}`;
+    if (rest.length <= 6) return `${prefix}-${rest.slice(0, 3)}-${rest.slice(3)}`;
+    return `${prefix}-${rest.slice(0, 3)}-${rest.slice(3, 7)}`;
+  }
+  return formatPhoneBR(value);
+}
+
 /** Máscara de CEP: XXXXX-XXX. */
 export function formatCEP(value: string): string {
   const d = value.replace(/\D/g, '').slice(0, 8);

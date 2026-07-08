@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Entity } from '@/lib/types';
 import { Plus, X, Loader2, Trash2 } from 'lucide-react';
 import { usePresentationMode, maskContact } from '@/lib/presentation-mode';
+import { formatContactBR } from '@/lib/masks';
 import { useEntities, useEntityMutations } from '@/api';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import {
@@ -25,7 +26,7 @@ export function EntitiesPage() {
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
 
   const openNew = () => { setForm({ name: '', type: '', contact: '', status: 'Ativo' }); setEditId(null); setShowForm(true); };
-  const openEdit = (e: Entity) => { setForm({ name: e.name, type: e.type, contact: e.contact, status: e.status }); setEditId(e.id); setShowForm(true); };
+  const openEdit = (e: Entity) => { setForm({ name: e.name, type: e.type, contact: formatContactBR(e.contact), status: e.status }); setEditId(e.id); setShowForm(true); };
 
   const save = (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,7 +90,7 @@ export function EntitiesPage() {
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Contato *</label>
-              <input value={form.contact} onChange={e => setForm(f => ({ ...f, contact: e.target.value }))} className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+              <input value={form.contact} onChange={e => setForm(f => ({ ...f, contact: formatContactBR(e.target.value) }))} placeholder="Telefone, 0800 ou nº de emergência" inputMode="tel" className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Status</label>

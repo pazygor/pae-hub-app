@@ -3,6 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { ApiError } from '@/api';
 import { AlertCircle, Loader2 } from 'lucide-react';
+import { PasswordInput } from '@/components/common/PasswordInput';
 import m1Logo from '@/assets/m1-logo.png';
 
 function loginErrorMessage(err: unknown): string {
@@ -83,8 +84,7 @@ export function LoginPage() {
           </div>
           <div>
             <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Senha</label>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={e => setPassword(e.target.value)}
               className="w-full px-3 py-2.5 rounded-lg border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
