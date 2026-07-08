@@ -12,6 +12,12 @@ interface ApiTerminal {
   responsible: string;
   contact: string;
   location: string;
+  cep?: string;
+  street?: string;
+  number?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
   lat: number | null;
   lng: number | null;
   status: string;
@@ -25,6 +31,12 @@ function adapt(t: ApiTerminal): Terminal {
     responsible: t.responsible ?? '',
     contact: t.contact ?? '',
     location: t.location ?? '',
+    cep: t.cep ?? '',
+    street: t.street ?? '',
+    number: t.number ?? '',
+    neighborhood: t.neighborhood ?? '',
+    city: t.city ?? '',
+    state: t.state ?? '',
     lat: t.lat ?? 0,
     lng: t.lng ?? 0,
     status: (t.status as Terminal['status']) ?? 'Ativo',
@@ -36,9 +48,14 @@ function toInput(form: Omit<Terminal, 'id'>) {
     name: form.name,
     responsible: form.responsible || undefined,
     contact: form.contact || undefined,
-    location: form.location || undefined,
-    latitude: form.lat,
-    longitude: form.lng,
+    cep: form.cep || undefined,
+    street: form.street || undefined,
+    number: form.number || undefined,
+    neighborhood: form.neighborhood || undefined,
+    city: form.city || undefined,
+    state: form.state || undefined,
+    latitude: form.lat || undefined,
+    longitude: form.lng || undefined,
     status: form.status,
   };
 }

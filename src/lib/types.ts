@@ -37,6 +37,12 @@ export interface Terminal {
   responsible: string;
   contact: string;
   location: string;
+  cep: string;
+  street: string;
+  number: string;
+  neighborhood: string;
+  city: string;
+  state: string;
   lat: number;
   lng: number;
   status: 'Ativo' | 'Inativo' | 'Revisão';

@@ -4,6 +4,7 @@ export * from './client';
 export * from './auth';
 export * from './adapters';
 export * from './terminals';
+export * from './geocoding';
 export * from './users';
 export * from './entities';
 export * from './permissions';

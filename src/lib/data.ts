@@ -2,9 +2,9 @@ import { AppData } from './types';
 
 export const INITIAL_DATA: AppData = {
   terminals: [
-    { id: 't1', name: 'Terminal Norte (TECON)', responsible: 'Carlos Silva', contact: '(13) 9982-1122', location: 'Cais 1 - Berço 101', lat: -23.9618, lng: -46.3322, status: 'Ativo' },
-    { id: 't2', name: 'Terminal Químico Sul', responsible: 'Ana Paula Mendes', contact: '(13) 9971-3344', location: 'Cais 4 - Berço 402', lat: -23.9720, lng: -46.3280, status: 'Revisão' },
-    { id: 't3', name: 'Terminal de Granéis Líquidos', responsible: 'Roberto Almeida', contact: '(13) 9965-5566', location: 'Cais 7 - Berço 701', lat: -23.9550, lng: -46.3400, status: 'Ativo' },
+    { id: 't1', name: 'Terminal Norte (TECON)', responsible: 'Carlos Silva', contact: '(13) 9982-1122', location: 'Cais 1 - Berço 101', cep: '', street: '', number: '', neighborhood: '', city: '', state: '', lat: -23.9618, lng: -46.3322, status: 'Ativo' },
+    { id: 't2', name: 'Terminal Químico Sul', responsible: 'Ana Paula Mendes', contact: '(13) 9971-3344', location: 'Cais 4 - Berço 402', cep: '', street: '', number: '', neighborhood: '', city: '', state: '', lat: -23.9720, lng: -46.3280, status: 'Revisão' },
+    { id: 't3', name: 'Terminal de Granéis Líquidos', responsible: 'Roberto Almeida', contact: '(13) 9965-5566', location: 'Cais 7 - Berço 701', cep: '', street: '', number: '', neighborhood: '', city: '', state: '', lat: -23.9550, lng: -46.3400, status: 'Ativo' },
   ],
   entities: [
     { id: 'e1', name: 'Corpo de Bombeiros', type: 'Emergência', contact: '193', status: 'Ativo' },
