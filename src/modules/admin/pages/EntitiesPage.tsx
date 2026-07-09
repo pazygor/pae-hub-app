@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '@/lib/auth-context';
 import { Entity } from '@/lib/types';
 import { Plus, X, Loader2, Trash2 } from 'lucide-react';
 import { usePresentationMode, maskContact } from '@/lib/presentation-mode';
@@ -15,12 +16,15 @@ const ENTITY_TYPES = ['Emergência', 'Autoridade Portuária', 'Regulatório', 'A
 const STATUS_OPTIONS: Entity['status'][] = ['Ativo', 'Inativo'];
 
 export function EntitiesPage() {
+  const { user } = useAuth();
   const { presentationMode } = usePresentationMode();
   const { data: entities = [], isLoading, isError } = useEntities();
-  const { create, update, remove: removeMut } = useEntityMutations();
+  const { create, update, remove: removeMut, hardDelete } = useEntityMutations();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Entity | null>(null);
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<Entity | null>(null);
+  const isAdmin = user?.role === 'admin';
   const [form, setForm] = useState<Omit<Entity, 'id'>>({ name: '', type: '', contact: '', status: 'Ativo' });
   const saving = create.isPending || update.isPending;
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
@@ -46,6 +50,16 @@ export function EntitiesPage() {
       onError,
     });
     setDeleteTarget(null);
+  };
+
+  const confirmHardDelete = () => {
+    if (!hardDeleteTarget) return;
+    const name = hardDeleteTarget.name;
+    hardDelete.mutate(hardDeleteTarget.id, {
+      onSuccess: () => toast.success(`Entidade ${name} excluída permanentemente`),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao excluir', { duration: 8000 }),
+    });
+    setHardDeleteTarget(null);
   };
 
   const pm = presentationMode;
@@ -143,6 +157,9 @@ export function EntitiesPage() {
                   <td className="px-4 py-3 text-right space-x-3">
                     <button onClick={() => openEdit(e)} className="text-accent font-bold text-xs cursor-pointer hover:underline">Editar</button>
                     <button onClick={() => setDeleteTarget(e)} className="text-emergency font-bold text-xs cursor-pointer hover:underline">Inativar</button>
+                    {isAdmin && (
+                      <button onClick={() => setHardDeleteTarget(e)} className="text-destructive font-bold text-xs cursor-pointer hover:underline">Excluir</button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -172,6 +189,30 @@ export function EntitiesPage() {
             <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={confirmInactivate} className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90">
               Inativar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação de exclusão PERMANENTE (admin) — bloqueada pela API se houver vínculos */}
+      <AlertDialog open={!!hardDeleteTarget} onOpenChange={open => { if (!open) setHardDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="p-1.5 bg-destructive/10 rounded-lg"><Trash2 size={16} className="text-destructive" /></span>
+              Excluir entidade permanentemente?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              A entidade <strong className="text-foreground font-semibold">{hardDeleteTarget?.name}</strong> será
+              <strong className="text-destructive"> removida para sempre</strong> do banco de dados — diferente de
+              "Inativar", esta ação <strong>não pode ser desfeita</strong>. Se houver permissões, regras de
+              acionamento ou notificações já disparadas vinculadas, a exclusão será recusada e você verá o motivo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmHardDelete} className="cursor-pointer bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Excluir permanentemente
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

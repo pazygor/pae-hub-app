@@ -78,9 +78,10 @@ export const usersApi = {
     adapt(await http.post<ApiUser>('/users', input)),
   update: async (id: string, input: UserInput): Promise<AppUser> =>
     adapt(await http.put<ApiUser>(`/users/${id}`, input)),
-  // Não há delete de usuário no back; inativação é via status (soft delete).
   setStatus: (id: string, status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'): Promise<unknown> =>
     http.put(`/users/${id}/status`, { status }),
+  /** Exclusão permanente (admin) — a API bloqueia (409) se houver dados vinculados. */
+  hardDelete: (id: string): Promise<unknown> => http.del(`/users/${id}/permanent`),
   // Crachá do PAE — comunicação rápida (todos os papéis).
   contacts: (): Promise<UserContact[]> => http.get<UserContact[]>('/users/contacts'),
 };

@@ -24,10 +24,11 @@ export function TerminalsPage() {
   const { user } = useAuth();
   const { data: terminals = [], isLoading, isError } = useTerminals();
   const { data: users = [] } = useUsers();
-  const { create, update, remove: removeMut } = useTerminalMutations();
+  const { create, update, remove: removeMut, hardDelete } = useTerminalMutations();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Terminal | null>(null);
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<Terminal | null>(null);
   const [geocoding, setGeocoding] = useState(false);
   const [form, setForm] = useState<Omit<Terminal, 'id'>>(EMPTY);
 
@@ -110,6 +111,16 @@ export function TerminalsPage() {
       onError,
     });
     setDeleteTarget(null);
+  };
+
+  const confirmHardDelete = () => {
+    if (!hardDeleteTarget) return;
+    const name = hardDeleteTarget.name;
+    hardDelete.mutate(hardDeleteTarget.id, {
+      onSuccess: () => toast.success(`Terminal ${name} excluído permanentemente`),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao excluir', { duration: 8000 }),
+    });
+    setHardDeleteTarget(null);
   };
 
   const inputCls = 'w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary';
@@ -283,6 +294,7 @@ export function TerminalsPage() {
                     <td className="px-4 py-3 text-right space-x-3">
                       <button onClick={() => openEdit(t)} className="text-primary font-bold text-xs cursor-pointer hover:underline">Editar</button>
                       <button onClick={() => setDeleteTarget(t)} className="text-primary font-bold text-xs cursor-pointer hover:underline">Inativar</button>
+                      <button onClick={() => setHardDeleteTarget(t)} className="text-destructive font-bold text-xs cursor-pointer hover:underline">Excluir</button>
                     </td>
                   )}
                 </tr>
@@ -313,6 +325,30 @@ export function TerminalsPage() {
             <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={confirmInactivate} className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90">
               Inativar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação de exclusão PERMANENTE (admin) — bloqueada pela API se houver vínculos */}
+      <AlertDialog open={!!hardDeleteTarget} onOpenChange={open => { if (!open) setHardDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="p-1.5 bg-destructive/10 rounded-lg"><Trash2 size={16} className="text-destructive" /></span>
+              Excluir terminal permanentemente?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              O terminal <strong className="text-foreground font-semibold">{hardDeleteTarget?.name}</strong> será
+              <strong className="text-destructive"> removido para sempre</strong> do banco de dados — diferente de
+              "Inativar", esta ação <strong>não pode ser desfeita</strong>. Se houver ocorrências, riscos, planos ou
+              usuários vinculados a este terminal, a exclusão será recusada e você verá o motivo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmHardDelete} className="cursor-pointer bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Excluir permanentemente
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

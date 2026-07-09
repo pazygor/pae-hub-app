@@ -19,4 +19,6 @@ export const entitiesApi = {
   create: async (form: Omit<Entity, 'id'>): Promise<Entity> => adapt(await http.post<ApiEntity>('/entities', form)),
   update: async (id: string, form: Omit<Entity, 'id'>): Promise<Entity> => adapt(await http.put<ApiEntity>(`/entities/${id}`, form)),
   remove: (id: string): Promise<unknown> => http.del(`/entities/${id}`),
+  /** Exclusão permanente (admin) — a API bloqueia (409) se houver dados vinculados. */
+  hardDelete: (id: string): Promise<unknown> => http.del(`/entities/${id}/permanent`),
 };

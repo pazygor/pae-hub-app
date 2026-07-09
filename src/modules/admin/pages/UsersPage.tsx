@@ -26,10 +26,12 @@ export function UsersPage() {
   const { data: users = [], isLoading, isError } = useUsers();
   const { data: terminals = [] } = useTerminals();
   const { data: entities = [] } = useEntities();
-  const { create, update, setStatus } = useUserMutations();
+  const { create, update, setStatus, hardDelete } = useUserMutations();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<AppUser | null>(null);
+  const isAdmin = user?.role === 'admin';
   const [form, setForm] = useState({ name: '', email: '', password: '', phone: '', role: 'terminal' as UserRole, linkId: '', accessLevel: '' as AccessLevel | '', tacticalManagerId: '' });
   const saving = create.isPending || update.isPending;
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
@@ -71,6 +73,16 @@ export function UsersPage() {
       onError,
     });
     setDeleteTarget(null);
+  };
+
+  const confirmHardDelete = () => {
+    if (!hardDeleteTarget) return;
+    const name = hardDeleteTarget.name;
+    hardDelete.mutate(hardDeleteTarget.id, {
+      onSuccess: () => toast.success(`Usuário ${name} excluído permanentemente`),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao excluir', { duration: 8000 }),
+    });
+    setHardDeleteTarget(null);
   };
 
   const getLinkName = (u: AppUser) => {
@@ -260,6 +272,9 @@ export function UsersPage() {
                       {u.role !== 'admin' && (
                         <button onClick={() => setDeleteTarget(u)} className="text-emergency font-bold text-xs cursor-pointer hover:underline">Inativar</button>
                       )}
+                      {isAdmin && u.role !== 'admin' && (
+                        <button onClick={() => setHardDeleteTarget(u)} className="text-destructive font-bold text-xs cursor-pointer hover:underline">Excluir</button>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -287,6 +302,30 @@ export function UsersPage() {
             <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={confirmInactivate} className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90">
               Inativar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmação de exclusão PERMANENTE (admin) — bloqueada pela API se houver vínculos */}
+      <AlertDialog open={!!hardDeleteTarget} onOpenChange={open => { if (!open) setHardDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="p-1.5 bg-destructive/10 rounded-lg"><Trash2 size={16} className="text-destructive" /></span>
+              Excluir usuário permanentemente?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong className="text-foreground font-semibold">{hardDeleteTarget?.name}</strong> será
+              <strong className="text-destructive"> removido para sempre</strong> do banco de dados — diferente de
+              "Inativar", esta ação <strong>não pode ser desfeita</strong>. Se houver ocorrências, mensagens de chat,
+              treinamentos, EPIs ou operacionais sob sua gestão vinculados, a exclusão será recusada e você verá o motivo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmHardDelete} className="cursor-pointer bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Excluir permanentemente
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

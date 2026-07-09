@@ -39,6 +39,7 @@ export function useTerminalMutations() {
     create: useMutation({ mutationFn: (form: Omit<Terminal, 'id'>) => terminalsApi.create(form), onSuccess }),
     update: useMutation({ mutationFn: (v: { id: string; form: Omit<Terminal, 'id'> }) => terminalsApi.update(v.id, v.form), onSuccess }),
     remove: useMutation({ mutationFn: (id: string) => terminalsApi.remove(id), onSuccess }),
+    hardDelete: useMutation({ mutationFn: (id: string) => terminalsApi.hardDelete(id), onSuccess }),
   };
 }
 
@@ -60,6 +61,7 @@ export function useUserMutations() {
     create: useMutation({ mutationFn: (input: UserInput) => usersApi.create(input), onSuccess }),
     update: useMutation({ mutationFn: (v: { id: string; input: UserInput }) => usersApi.update(v.id, v.input), onSuccess }),
     setStatus: useMutation({ mutationFn: (v: { id: string; status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' }) => usersApi.setStatus(v.id, v.status), onSuccess }),
+    hardDelete: useMutation({ mutationFn: (id: string) => usersApi.hardDelete(id), onSuccess }),
   };
 }
 
@@ -76,6 +78,7 @@ export function useEntityMutations() {
     create: useMutation({ mutationFn: (form: Omit<Entity, 'id'>) => entitiesApi.create(form), onSuccess }),
     update: useMutation({ mutationFn: (v: { id: string; form: Omit<Entity, 'id'> }) => entitiesApi.update(v.id, v.form), onSuccess }),
     remove: useMutation({ mutationFn: (id: string) => entitiesApi.remove(id), onSuccess }),
+    hardDelete: useMutation({ mutationFn: (id: string) => entitiesApi.hardDelete(id), onSuccess }),
   };
 }
 

@@ -70,4 +70,6 @@ export const terminalsApi = {
   update: async (id: string, form: Omit<Terminal, 'id'>): Promise<Terminal> =>
     adapt(await http.put<ApiTerminal>(`/terminals/${id}`, toInput(form))),
   remove: (id: string): Promise<unknown> => http.del(`/terminals/${id}`),
+  /** Exclusão permanente (admin) — a API bloqueia (409) se houver dados vinculados. */
+  hardDelete: (id: string): Promise<unknown> => http.del(`/terminals/${id}/permanent`),
 };
