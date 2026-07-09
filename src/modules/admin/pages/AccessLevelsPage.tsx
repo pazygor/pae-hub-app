@@ -125,6 +125,10 @@ export function AccessLevelsPage() {
           const userModules = u.allowedModules || RESTRICTABLE_MODULES.map(String);
           const userTerminals = u.allowedTerminals || terminals.map(t => t.id);
           const userOccTypes = u.allowedOccurrenceTypes || OCCURRENCE_TYPES;
+          // Conta o que de fato é visível: adicionais + terminal-casa (sempre visível)
+          const visibleTerminalCount = terminals.filter(
+            t => (u.role === 'terminal' && t.id === u.linkId) || userTerminals.includes(t.id),
+          ).length;
 
           return (
             <div key={u.id} className="bg-card border border-border rounded-xl overflow-hidden">
@@ -227,7 +231,7 @@ export function AccessLevelsPage() {
                   {/* Terminal Restrictions */}
                   <div>
                     <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
-                      Terminais Visíveis ({userTerminals.length}/{terminals.length})
+                      Terminais Visíveis ({visibleTerminalCount}/{terminals.length})
                     </label>
                     {u.role === 'terminal' && (
                       <p className="text-[10px] text-muted-foreground mb-2">

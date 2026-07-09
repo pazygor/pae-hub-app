@@ -123,10 +123,16 @@ export function OccurrencesPage() {
   const pdfData = { ...data, terminals, entities, permissions, risks, plans, documents };
 
   // Tipos que o usuário pode abrir (Níveis de Acesso); vazio = todos os 8.
+  // Tipos que o usuário pode abrir/ver (Níveis de Acesso). Admin = todos;
+  // não-admin = só os permitidos (vazio = nenhum).
   const availableTypes = useMemo(() => {
+    if (user?.role === 'admin') return OCCURRENCE_TYPES;
     const allowed = user?.allowedOccurrenceTypes ?? [];
-    return allowed.length ? OCCURRENCE_TYPES.filter(t => allowed.includes(t)) : OCCURRENCE_TYPES;
-  }, [user?.allowedOccurrenceTypes]);
+    return OCCURRENCE_TYPES.filter(t => allowed.includes(t));
+  }, [user?.role, user?.allowedOccurrenceTypes]);
+
+  // Usuário não-admin sem nenhum tipo liberado → não vê/cria ocorrências.
+  const noTypesAllowed = user?.role !== 'admin' && availableTypes.length === 0;
 
   // Responsável: usuários do terminal onde a ocorrência será criada.
   const responsibleTerminalId = user?.role === 'admin' ? form.terminalId : (user?.linkId ?? '');
@@ -212,8 +218,8 @@ export function OccurrencesPage() {
           <button onClick={() => setShowFilters(!showFilters)} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-md transition-colors ${showFilters || activeFilterCount > 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'}`}>
             <Filter size={14} /> Filtros {activeFilterCount > 0 && <span className="bg-primary-foreground text-primary px-1.5 py-0.5 rounded-full text-[10px] font-mono">{activeFilterCount}</span>}
           </button>
-          {canCreate && (
-            <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md hover:opacity-90 transition-opacity">
+          {canCreate && !noTypesAllowed && (
+            <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity">
               <Plus size={14} /> Nova Ocorrência
             </button>
           )}
@@ -386,7 +392,17 @@ export function OccurrencesPage() {
         {isError && !isLoading && (
           <p className="p-4 text-sm text-primary bg-card border border-border rounded-xl">Falha ao carregar ocorrências da API.</p>
         )}
-        {!isLoading && !isError && occurrences.length === 0 && <p className="p-4 text-sm text-muted-foreground italic bg-card border border-border rounded-xl">Nenhuma ocorrência encontrada.</p>}
+        {!isLoading && !isError && noTypesAllowed && (
+          <div className="p-6 bg-card border border-border rounded-xl text-center space-y-2">
+            <AlertTriangle size={22} className="text-warning mx-auto" />
+            <p className="text-sm font-bold text-foreground">Nenhum tipo de ocorrência liberado</p>
+            <p className="text-xs text-muted-foreground max-w-md mx-auto">
+              Seu perfil não tem nenhum <strong>Tipo de Ocorrência</strong> ativo em Níveis de Acesso, então não há
+              ocorrências para exibir. Peça a um administrador para liberar os tipos que você precisa acompanhar.
+            </p>
+          </div>
+        )}
+        {!isLoading && !isError && !noTypesAllowed && occurrences.length === 0 && <p className="p-4 text-sm text-muted-foreground italic bg-card border border-border rounded-xl">Nenhuma ocorrência encontrada.</p>}
         {occurrences.map(o => {
           const isExpanded = expandedId === o.id;
           const timeline = [...(o.timeline || [])].sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
