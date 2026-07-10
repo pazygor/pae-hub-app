@@ -48,7 +48,7 @@ export function AppSidebar({ collapsed }: Props) {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto scrollbar-sidebar">
         {filtered.map((item, idx) => {
           const prevItem = filtered[idx - 1];
           const showSection = item.section && (!prevItem || prevItem.section !== item.section);

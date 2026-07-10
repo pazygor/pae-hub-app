@@ -6,8 +6,10 @@
 
 import {
   LayoutDashboard, Ship, Shield, Users, Lock, AlertTriangle, FileText, Siren,
-  MapPin, Radio, FolderOpen, Info, IdCard, ShieldCheck, Bell, Activity,
-  GraduationCap, HardHat, ClipboardCheck, Puzzle, UserCircle, Network, Brain,
+  MapPin, Radio, Info, IdCard, ShieldCheck, Bell, Activity,
+  Puzzle, Network, Brain,
+  // [OCULTO FASE 1 — ver docs/ocultacao-menu-fase1.md] Ícones dos itens ocultados (Meu Painel, Documentos, Segurança Operacional):
+  // UserCircle, FolderOpen, GraduationCap, HardHat, ClipboardCheck,
 } from 'lucide-react';
 import { UserRole, AppUser } from '@/lib/types';
 
@@ -26,7 +28,8 @@ export interface NavItem {
 }
 
 export const NAV_CONFIG: NavItem[] = [
-  { id: 'my-panel', path: '/meu-painel', label: 'Meu Painel', icon: UserCircle, roles: ['admin', 'terminal', 'entity'] },
+  // [OCULTO FASE 1 — ver docs/ocultacao-menu-fase1.md] Meu Painel (Fase 2)
+  // { id: 'my-panel', path: '/meu-painel', label: 'Meu Painel', icon: UserCircle, roles: ['admin', 'terminal', 'entity'] },
   { id: 'cop', path: '/centro-de-operacoes', label: 'Centro de Operações', icon: Radio, roles: ['admin', 'terminal', 'entity'] },
   { id: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'terminal', 'entity'] },
   { id: 'terminals', path: '/terminais', label: 'Terminais', icon: Ship, roles: ['admin', 'entity'] },
@@ -41,12 +44,14 @@ export const NAV_CONFIG: NavItem[] = [
   { id: 'plans', path: '/planos-de-acao', label: 'Planos de Ação', icon: FileText, roles: ['admin', 'terminal', 'entity'], section: 'PAE' },
   { id: 'occurrences', path: '/ocorrencias', label: 'Ocorrências', icon: Siren, roles: ['admin', 'terminal', 'entity'], section: 'PAE' },
   { id: 'map', path: '/mapa-de-emergencia', label: 'Mapa de Emergência', icon: MapPin, roles: ['admin', 'terminal', 'entity'], section: 'PAE' },
-  { id: 'documents', path: '/documentos', label: 'Documentos', headerLabel: 'Biblioteca de Documentos', icon: FolderOpen, roles: ['admin', 'terminal', 'entity'], section: 'PAE' },
+  // [OCULTO FASE 1 — ver docs/ocultacao-menu-fase1.md] Documentos (Fase 2)
+  // { id: 'documents', path: '/documentos', label: 'Documentos', headerLabel: 'Biblioteca de Documentos', icon: FolderOpen, roles: ['admin', 'terminal', 'entity'], section: 'PAE' },
   { id: 'badge', path: '/cracha-do-pae', label: 'Crachá do PAE', icon: IdCard, roles: ['admin', 'terminal', 'entity'], section: 'PAE' },
-  { id: 'safety', path: '/seguranca', label: 'Visão Geral', headerLabel: 'Centro de Segurança Operacional', icon: ShieldCheck, roles: ['admin'], section: 'Segurança Operacional' },
-  { id: 'trainings', path: '/seguranca/treinamentos', label: 'Treinamentos', headerLabel: 'Centro de Segurança Operacional', icon: GraduationCap, roles: ['admin', 'terminal'], section: 'Segurança Operacional' },
-  { id: 'epis', path: '/seguranca/epis', label: 'EPIs', headerLabel: 'Centro de Segurança Operacional', icon: HardHat, roles: ['admin', 'terminal'], section: 'Segurança Operacional' },
-  { id: 'compliance', path: '/seguranca/conformidade', label: 'Conformidade', headerLabel: 'Centro de Segurança Operacional', icon: ClipboardCheck, roles: ['admin', 'terminal'], section: 'Segurança Operacional' },
+  // ── [OCULTO FASE 1 — ver docs/ocultacao-menu-fase1.md] Segurança Operacional (TODA a seção é Fase 2) ──
+  // { id: 'safety', path: '/seguranca', label: 'Visão Geral', headerLabel: 'Centro de Segurança Operacional', icon: ShieldCheck, roles: ['admin'], section: 'Segurança Operacional' },
+  // { id: 'trainings', path: '/seguranca/treinamentos', label: 'Treinamentos', headerLabel: 'Centro de Segurança Operacional', icon: GraduationCap, roles: ['admin', 'terminal'], section: 'Segurança Operacional' },
+  // { id: 'epis', path: '/seguranca/epis', label: 'EPIs', headerLabel: 'Centro de Segurança Operacional', icon: HardHat, roles: ['admin', 'terminal'], section: 'Segurança Operacional' },
+  // { id: 'compliance', path: '/seguranca/conformidade', label: 'Conformidade', headerLabel: 'Centro de Segurança Operacional', icon: ClipboardCheck, roles: ['admin', 'terminal'], section: 'Segurança Operacional' },
   { id: 'modules', path: '/pacotes-do-sistema', label: 'Pacotes do Sistema', icon: Puzzle, roles: ['admin'] },
   { id: 'org-chart', path: '/organograma', label: 'Organograma', icon: Network, roles: ['admin'] },
   { id: 'about', path: '/sobre', label: 'Sobre o Sistema', icon: Info, roles: ['admin', 'terminal', 'entity'] },

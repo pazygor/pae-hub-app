@@ -30,6 +30,7 @@ export function TerminalsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Terminal | null>(null);
   const [hardDeleteTarget, setHardDeleteTarget] = useState<Terminal | null>(null);
   const [geocoding, setGeocoding] = useState(false);
+  const [cepLoading, setCepLoading] = useState(false);
   const [form, setForm] = useState<Omit<Terminal, 'id'>>(EMPTY);
 
   const visibleTerminals = terminals;
@@ -45,14 +46,21 @@ export function TerminalsPage() {
     .map(u => ({ name: u.name, terminalName: terminals.find(t => t.id === u.linkId)?.name }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const openNew = () => { setForm(EMPTY); setEditId(null); setShowForm(true); };
+  const openNew = () => { setForm(EMPTY); setEditId(null); setCepLoading(false); setShowForm(true); };
   const openEdit = (t: Terminal) => {
+    // Fallback p/ terminais legados (só têm o texto livre `location`, sem os
+    // campos estruturados): mostra o endereço existente em Rua/Logradouro em
+    // vez de deixar toda a seção em branco.
+    const hasStructured = !!(t.street || t.number || t.neighborhood || t.city || t.state);
     setForm({
       name: t.name, responsible: t.responsible, contact: formatPhoneBR(t.contact), location: t.location,
-      cep: t.cep, street: t.street, number: t.number, neighborhood: t.neighborhood, city: t.city, state: t.state,
+      cep: t.cep,
+      street: t.street || (!hasStructured ? t.location : ''),
+      number: t.number, neighborhood: t.neighborhood, city: t.city, state: t.state,
       lat: t.lat, lng: t.lng, status: t.status,
     });
     setEditId(t.id);
+    setCepLoading(false);
     setShowForm(true);
   };
 
@@ -60,15 +68,20 @@ export function TerminalsPage() {
     const masked = formatCEP(value);
     setForm(f => ({ ...f, cep: masked }));
     if (masked.replace(/\D/g, '').length === 8) {
-      const addr = await lookupCep(masked);
-      if (addr) {
-        setForm(f => ({
-          ...f,
-          street: addr.street ?? f.street,
-          neighborhood: addr.neighborhood ?? f.neighborhood,
-          city: addr.city ?? f.city,
-          state: addr.state ?? f.state,
-        }));
+      setCepLoading(true);
+      try {
+        const addr = await lookupCep(masked);
+        if (addr) {
+          setForm(f => ({
+            ...f,
+            street: addr.street ?? f.street,
+            neighborhood: addr.neighborhood ?? f.neighborhood,
+            city: addr.city ?? f.city,
+            state: addr.state ?? f.state,
+          }));
+        }
+      } finally {
+        setCepLoading(false);
       }
     }
   };
@@ -125,6 +138,10 @@ export function TerminalsPage() {
 
   const inputCls = 'w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary';
   const labelCls = 'block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1';
+  // Spinner posicionado dentro do campo enquanto o CEP é consultado na BrasilAPI.
+  const fieldSpinner = cepLoading
+    ? <Loader2 size={14} className="animate-spin absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+    : null;
 
   return (
     <div className="space-y-4">
@@ -188,11 +205,17 @@ export function TerminalsPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className={labelCls}>CEP</label>
-                  <input value={form.cep} onChange={e => onCepChange(e.target.value)} placeholder="00000-000" inputMode="numeric" className={inputCls} />
+                  <div className="relative">
+                    <input value={form.cep} onChange={e => onCepChange(e.target.value)} placeholder="00000-000" inputMode="numeric" className={`${inputCls} ${cepLoading ? 'pr-9' : ''}`} />
+                    {fieldSpinner}
+                  </div>
                 </div>
                 <div className="md:col-span-2">
                   <label className={labelCls}>Rua / Logradouro</label>
-                  <input value={form.street} onChange={e => setForm(f => ({ ...f, street: e.target.value }))} className={inputCls} />
+                  <div className="relative">
+                    <input value={form.street} onChange={e => setForm(f => ({ ...f, street: e.target.value }))} disabled={cepLoading} className={`${inputCls} ${cepLoading ? 'pr-9 opacity-60' : ''}`} />
+                    {fieldSpinner}
+                  </div>
                 </div>
                 <div>
                   <label className={labelCls}>Número</label>
@@ -200,16 +223,24 @@ export function TerminalsPage() {
                 </div>
                 <div>
                   <label className={labelCls}>Bairro</label>
-                  <input value={form.neighborhood} onChange={e => setForm(f => ({ ...f, neighborhood: e.target.value }))} className={inputCls} />
+                  <div className="relative">
+                    <input value={form.neighborhood} onChange={e => setForm(f => ({ ...f, neighborhood: e.target.value }))} disabled={cepLoading} className={`${inputCls} ${cepLoading ? 'pr-9 opacity-60' : ''}`} />
+                    {fieldSpinner}
+                  </div>
                 </div>
                 <div>
                   <label className={labelCls}>Cidade</label>
-                  <input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} className={inputCls} />
+                  <div className="relative">
+                    <input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} disabled={cepLoading} className={`${inputCls} ${cepLoading ? 'pr-9 opacity-60' : ''}`} />
+                    {fieldSpinner}
+                  </div>
                 </div>
                 <div>
                   <label className={labelCls}>Estado (UF)</label>
-                  <Select value={form.state || undefined} onValueChange={v => setForm(f => ({ ...f, state: v }))}>
-                    <SelectTrigger className="cursor-pointer"><SelectValue placeholder="UF" /></SelectTrigger>
+                  <Select value={form.state || undefined} onValueChange={v => setForm(f => ({ ...f, state: v }))} disabled={cepLoading}>
+                    <SelectTrigger className={`cursor-pointer ${cepLoading ? 'opacity-60' : ''}`}>
+                      {cepLoading ? <Loader2 size={14} className="animate-spin text-muted-foreground" /> : <SelectValue placeholder="UF" />}
+                    </SelectTrigger>
                     <SelectContent className="max-h-60">
                       {UF_OPTIONS.map(uf => <SelectItem key={uf} value={uf} className="cursor-pointer">{uf}</SelectItem>)}
                     </SelectContent>

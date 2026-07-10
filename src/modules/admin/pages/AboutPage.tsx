@@ -28,7 +28,7 @@ export function AboutPage() {
           </div>
           <div>
             <p className="text-muted-foreground text-xs">Ambiente</p>
-            <p className="font-bold text-foreground">Demonstração</p>
+            <p className="font-bold text-foreground">Produção</p>
           </div>
           <div>
             <p className="text-muted-foreground text-xs">Desenvolvido por</p>

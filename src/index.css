@@ -126,3 +126,66 @@
     @apply bg-muted/30;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Scrollbars personalizados — identidade PAE Hub (destaque em --primary no hover)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Padrão global: conteúdo principal, tabelas, modais, dropdowns (tema claro/escuro) */
+* {
+  scrollbar-width: thin;                               /* Firefox */
+  scrollbar-color: hsl(0 0% 80%) transparent;          /* thumb | track */
+}
+.dark * {
+  scrollbar-color: hsl(0 0% 26%) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: hsl(0 0% 80%);
+  border-radius: 9999px;
+  border: 2px solid transparent;        /* respiro em volta do pill */
+  background-clip: padding-box;
+  transition: background-color 0.2s ease;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--primary));
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+.dark *::-webkit-scrollbar-thumb {
+  background-color: hsl(0 0% 26%);
+}
+.dark *::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--primary));
+}
+
+/* Variante para superfícies escuras (menu lateral) — sempre escuro em ambos os temas */
+.scrollbar-sidebar {
+  scrollbar-color: hsl(0 0% 22%) transparent;          /* Firefox */
+}
+.scrollbar-sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+.scrollbar-sidebar::-webkit-scrollbar-thumb {
+  background-color: hsl(0 0% 22%);
+}
+.scrollbar-sidebar::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--primary));
+}
+
+/* Utilitário para esconder totalmente a barra (ex.: faixas com scroll horizontal) */
+.scrollbar-none {
+  scrollbar-width: none;                 /* Firefox */
+  -ms-overflow-style: none;              /* IE/Edge legado */
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}

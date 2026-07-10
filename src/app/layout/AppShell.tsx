@@ -9,7 +9,8 @@ import { GlobalSearch } from '@/components/common/GlobalSearch';
 import { PageLoader } from '@/components/common/PageLoader';
 import { AppSidebar } from './AppSidebar';
 import { MobileShell } from './MobileShell';
-import { PendencyAlertModal } from './PendencyAlertModal';
+// [OCULTO FASE 1 — ver docs/ocultacao-menu-fase1.md] Modal de pendências (Segurança Operacional = Fase 2)
+// import { PendencyAlertModal } from './PendencyAlertModal';
 import { useEmergencyDispatch } from './EmergencyDispatchProvider';
 import { useViewMode } from './ViewModeProvider';
 import { headerLabelForPath, pathForView, situationRoomPath } from '@/lib/nav-config';
@@ -62,7 +63,8 @@ export function AppShell() {
 
   return (
     <div className="flex h-svh bg-background overflow-hidden">
-      <PendencyAlertModal />
+      {/* [OCULTO FASE 1 — ver docs/ocultacao-menu-fase1.md] Modal de pendências operacionais (Treinamentos/EPIs/Conformidade = Segurança Operacional, Fase 2) */}
+      {/* <PendencyAlertModal /> */}
 
       <GlobalSearch
         open={showSearch}
@@ -139,7 +141,7 @@ export function AppShell() {
                 <span className="hidden sm:inline">Disparar Emergência</span>
               </button>
             )}
-            <span className="text-[9px] font-medium px-2 py-0.5 bg-accent/10 text-accent rounded-full border border-accent/20 hidden md:inline">DEMO</span>
+            
             <span className="text-[10px] font-bold px-2.5 py-1 bg-primary/10 text-primary rounded-full uppercase tracking-wider">{roleLabel}</span>
             <span className="text-xs text-muted-foreground hidden sm:inline">{presentationMode ? maskEmail(user.email) : user.email}</span>
           </div>
