@@ -1,9 +1,16 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
-import { RiskLevel } from '@/lib/types';
+import { Risk, RiskLevel } from '@/lib/types';
 import { Plus, AlertTriangle, Trash2, Loader2 } from 'lucide-react';
 import { useRisks, useRiskMutations, useTerminals } from '@/api';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
+
+const LEVEL_OPTIONS: RiskLevel[] = ['baixo', 'médio', 'alto'];
 
 export function RisksPage() {
   const { user } = useAuth();
@@ -11,15 +18,19 @@ export function RisksPage() {
   const { data: terminals = [] } = useTerminals();
   const { create, remove } = useRiskMutations();
   const [showForm, setShowForm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Risk | null>(null);
   const [form, setForm] = useState({ type: '', description: '', level: 'médio' as RiskLevel, affectedArea: '', terminalId: '' });
 
   if (!user) return null;
 
   const canCreate = user.role === 'admin' || user.role === 'terminal';
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
+  const inputCls = 'w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary';
+  const labelCls = 'block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1';
 
   const handleAdd = () => {
-    if (!form.type || !form.description) return;
+    if (!form.type.trim()) { toast.error('Informe o tipo de risco'); return; }
+    if (!form.description.trim()) { toast.error('Informe a descrição do risco'); return; }
     if (user.role === 'admin' && !form.terminalId) { toast.error('Selecione o terminal'); return; }
     create.mutate(
       {
@@ -40,9 +51,11 @@ export function RisksPage() {
     );
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm('Remover este risco?')) return;
-    remove.mutate(id, { onSuccess: () => toast.success('Risco removido'), onError });
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    const type = deleteTarget.type;
+    remove.mutate(deleteTarget.id, { onSuccess: () => toast.success(`Risco "${type}" removido`), onError });
+    setDeleteTarget(null);
   };
 
   const levelColor = (l: RiskLevel) =>
@@ -60,35 +73,53 @@ export function RisksPage() {
           <h2 className="text-lg font-bold text-foreground">Cadastro de Riscos</h2>
         </div>
         {canCreate && (
-          <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md hover:opacity-90 transition-opacity">
+          <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity">
             <Plus size={14} /> Novo Risco
           </button>
         )}
       </div>
 
       {showForm && (
-        <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input placeholder="Tipo de risco" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground" />
-            <select value={form.level} onChange={e => setForm(f => ({ ...f, level: e.target.value as RiskLevel }))} className="px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground">
-              <option value="baixo">Baixo</option>
-              <option value="médio">Médio</option>
-              <option value="alto">Alto</option>
-            </select>
-            <input placeholder="Área afetada" value={form.affectedArea} onChange={e => setForm(f => ({ ...f, affectedArea: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground" />
+        <div className="bg-card border border-border rounded-lg p-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>Tipo de risco *</label>
+              <input placeholder="Ex.: Curto-circuito, vazamento químico..." value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Nível</label>
+              <Select value={form.level} onValueChange={v => setForm(f => ({ ...f, level: v as RiskLevel }))}>
+                <SelectTrigger className="cursor-pointer capitalize"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {LEVEL_OPTIONS.map(l => <SelectItem key={l} value={l} className="cursor-pointer capitalize">{l}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className={labelCls}>Área afetada</label>
+              <input placeholder="Ex.: Berço 101, pátio de contêineres..." value={form.affectedArea} onChange={e => setForm(f => ({ ...f, affectedArea: e.target.value }))} className={inputCls} />
+            </div>
             {user.role === 'admin' && (
-              <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground">
-                <option value="">Selecione o terminal...</option>
-                {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              <div>
+                <label className={labelCls}>Terminal *</label>
+                <Select value={form.terminalId} onValueChange={v => setForm(f => ({ ...f, terminalId: v }))}>
+                  <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
+                  <SelectContent>
+                    {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
           </div>
-          <textarea placeholder="Descrição do risco" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground min-h-[60px]" />
+          <div>
+            <label className={labelCls}>Descrição *</label>
+            <textarea placeholder="Descreva o risco..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className={`${inputCls} min-h-[60px]`} />
+          </div>
           <div className="flex gap-2">
-            <button onClick={handleAdd} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md disabled:opacity-60 flex items-center gap-1.5">
+            <button onClick={handleAdd} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-1.5">
               {create.isPending && <Loader2 size={12} className="animate-spin" />} Salvar
             </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-md">Cancelar</button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-md cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
           </div>
         </div>
       )}
@@ -112,11 +143,33 @@ export function RisksPage() {
               </p>
             </div>
             {canCreate && (
-              <button onClick={() => handleDelete(r.id)} className="text-muted-foreground hover:text-emergency transition-colors p-1"><Trash2 size={14} /></button>
+              <button onClick={() => setDeleteTarget(r)} className="text-muted-foreground hover:text-emergency transition-colors p-1 cursor-pointer"><Trash2 size={14} /></button>
             )}
           </div>
         ))}
       </div>
+
+      {/* Confirmação de remoção (AlertDialog — substitui o confirm() nativo) */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="p-1.5 bg-primary/10 rounded-lg"><Trash2 size={16} className="text-primary" /></span>
+              Remover risco?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              O risco <strong className="text-foreground font-semibold">{deleteTarget?.type}</strong> será removido do
+              cadastro. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90">
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

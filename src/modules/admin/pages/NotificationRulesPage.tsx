@@ -2,8 +2,13 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { NotificationRule } from '@/lib/types';
-import { Bell, Plus, X, Shield, AlertTriangle } from 'lucide-react';
+import { Bell, Plus, X, Shield, AlertTriangle, Trash2 } from 'lucide-react';
 import { useEntities, useNotificationRules, useNotificationRuleMutations, useEntityNotifications } from '@/api';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 
 const OCCURRENCE_TYPES = [
   'Princípio de incêndio', 'Vazamento', 'Emergência', 'Explosão',
@@ -18,12 +23,16 @@ export function NotificationRulesPage() {
   const { data: entityNotifications = [] } = useEntityNotifications();
   const { create, setMandatory, remove } = useNotificationRuleMutations();
   const [showForm, setShowForm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<NotificationRule | null>(null);
   const [form, setForm] = useState({ occurrenceType: '', entityId: '', mandatory: false });
 
   if (!user || user.role !== 'admin') return null;
 
+  const getEntityName = (id: string) => entities.find(e => e.id === id)?.name || id;
+
   const addRule = () => {
-    if (!form.occurrenceType || !form.entityId) return;
+    if (!form.occurrenceType) { toast.error('Selecione o tipo de ocorrência'); return; }
+    if (!form.entityId) { toast.error('Selecione a entidade'); return; }
     create.mutate(
       { occurrenceType: form.occurrenceType, entityId: form.entityId, mandatory: form.mandatory },
       {
@@ -33,8 +42,14 @@ export function NotificationRulesPage() {
     );
   };
 
-  const removeRule = (id: string) => {
-    remove.mutate(id, { onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao remover regra') });
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    const label = `${getEntityName(deleteTarget.entityId)} · ${deleteTarget.occurrenceType}`;
+    remove.mutate(deleteTarget.id, {
+      onSuccess: () => toast.success(`Regra removida (${label})`),
+      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao remover regra'),
+    });
+    setDeleteTarget(null);
   };
 
   const toggleMandatory = (id: string) => {
@@ -44,8 +59,6 @@ export function NotificationRulesPage() {
       onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao atualizar regra'),
     });
   };
-
-  const getEntityName = (id: string) => entities.find(e => e.id === id)?.name || id;
 
   // Group rules by occurrence type
   const groupedRules: Record<string, NotificationRule[]> = {};
@@ -75,7 +88,7 @@ export function NotificationRulesPage() {
         </div>
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:opacity-90 transition-opacity"
+          className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
         >
           <Plus size={14} /> Nova Regra
         </button>
@@ -95,39 +108,36 @@ export function NotificationRulesPage() {
         <div className="bg-card border border-border rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-foreground">Nova Regra de Notificação</h3>
-            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground">
+            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground cursor-pointer">
               <X size={18} />
             </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Tipo de Ocorrência</label>
-              <select
-                value={form.occurrenceType}
-                onChange={e => setForm(f => ({ ...f, occurrenceType: e.target.value }))}
-                className="w-full px-3 py-2.5 bg-background border border-input rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Selecione...</option>
-                {OCCURRENCE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+              <Select value={form.occurrenceType || undefined} onValueChange={v => setForm(f => ({ ...f, occurrenceType: v }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent>
+                  {OCCURRENCE_TYPES.map(t => <SelectItem key={t} value={t} className="cursor-pointer">{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Entidade</label>
-              <select
-                value={form.entityId}
-                onChange={e => setForm(f => ({ ...f, entityId: e.target.value }))}
-                className="w-full px-3 py-2.5 bg-background border border-input rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Selecione...</option>
-                {entities.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
+              <Select value={form.entityId || undefined} onValueChange={v => setForm(f => ({ ...f, entityId: v }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <SelectContent>
+                  {entities.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma entidade cadastrada</div>}
+                  {entities.map(e => <SelectItem key={e.id} value={e.id} className="cursor-pointer">{e.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setForm(f => ({ ...f, mandatory: !f.mandatory }))}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold border-2 transition-all ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold border-2 cursor-pointer transition-all ${
                 form.mandatory
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'bg-secondary text-secondary-foreground border-border'
@@ -141,13 +151,13 @@ export function NotificationRulesPage() {
             </span>
           </div>
           <div className="flex gap-3">
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg text-sm font-bold">
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground rounded-lg text-sm font-bold cursor-pointer hover:bg-secondary/80 transition-colors">
               Cancelar
             </button>
             <button
               onClick={addRule}
-              disabled={!form.occurrenceType || !form.entityId}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold disabled:opacity-50"
+              disabled={create.isPending}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50"
             >
               Adicionar Regra
             </button>
@@ -186,10 +196,11 @@ export function NotificationRulesPage() {
                     </button>
                   </div>
                   <button
-                    onClick={() => removeRule(rule.id)}
-                    className="text-primary/60 hover:text-primary text-xs font-bold"
+                    onClick={() => setDeleteTarget(rule)}
+                    className="text-muted-foreground hover:text-emergency transition-colors p-1 cursor-pointer"
+                    title="Remover regra"
                   >
-                    <X size={16} />
+                    <Trash2 size={14} />
                   </button>
                 </div>
               ))}
@@ -246,6 +257,29 @@ export function NotificationRulesPage() {
           </div>
         </div>
       )}
+
+      {/* Confirmação de remoção (AlertDialog — substitui o X direto) */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="p-1.5 bg-primary/10 rounded-lg"><Trash2 size={16} className="text-primary" /></span>
+              Remover regra de acionamento?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              A entidade <strong className="text-foreground font-semibold">{deleteTarget ? getEntityName(deleteTarget.entityId) : ''}</strong> deixará
+              de ser acionada automaticamente para ocorrências do tipo
+              <strong className="text-foreground font-semibold"> {deleteTarget?.occurrenceType}</strong>. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90">
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

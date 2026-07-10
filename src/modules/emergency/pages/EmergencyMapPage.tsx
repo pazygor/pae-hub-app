@@ -6,6 +6,11 @@ import { useAuth } from '@/lib/auth-context';
 import { Terminal, MapElement, MapLayerType } from '@/lib/types';
 import { Ship, AlertTriangle, Siren, MapPin, X, Clock, Plus, Trash2, Layers, Flame, Droplets, Route, TriangleAlert, Flag, Thermometer } from 'lucide-react';
 import { useTerminals, usePermissions, useOccurrences, useRisks, useMapElements, useMapElementMutations } from '@/api';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 import 'leaflet/dist/leaflet.css';
 
 const LAYER_CONFIG: Record<MapLayerType, { label: string; color: string; icon: typeof Flame }> = {
@@ -32,6 +37,7 @@ export function EmergencyMapPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({ name: '', layerType: 'fire_equipment' as MapLayerType, description: '', terminalId: '' });
   const [selectedElement, setSelectedElement] = useState<MapElement | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MapElement | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -55,6 +61,8 @@ export function EmergencyMapPage() {
   );
 
   const canEdit = user?.role === 'admin' || user?.role === 'terminal';
+  const inputCls = 'w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary';
+  const labelCls = 'block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1';
 
   const getMarkerColor = (terminalId: string): string => {
     const activeOccurrences = occurrences.filter(o => o.terminalId === terminalId && o.status !== 'resolvido');
@@ -88,10 +96,12 @@ export function EmergencyMapPage() {
   };
 
   const handleAddElement = () => {
-    if (!addForm.name || !addForm.description) return;
+    if (!addForm.name.trim()) { toast.error('Informe o nome do elemento'); return; }
+    if (!addForm.description.trim()) { toast.error('Informe a descrição do elemento'); return; }
+    if (user?.role === 'admin' && !addForm.terminalId) { toast.error('Selecione o terminal'); return; }
     const terminalId = user?.role === 'terminal' ? user.linkId! : addForm.terminalId || visibleTerminalIds[0];
     const terminal = terminals.find(t => t.id === terminalId);
-    if (!terminal) return;
+    if (!terminal) { toast.error('Terminal inválido'); return; }
     // Place near terminal with small random offset
     const offset = () => (Math.random() - 0.5) * 0.003;
     createElement.mutate(
@@ -115,11 +125,14 @@ export function EmergencyMapPage() {
     );
   };
 
-  const handleDeleteElement = (id: string) => {
-    removeElement.mutate(id, {
-      onSuccess: () => { setSelectedElement(null); toast.success('Elemento removido'); },
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    const name = deleteTarget.name;
+    removeElement.mutate(deleteTarget.id, {
+      onSuccess: () => { setSelectedElement(null); toast.success(`Elemento "${name}" removido`); },
       onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao remover elemento'),
     });
+    setDeleteTarget(null);
   };
 
   // Initialize map
@@ -267,7 +280,7 @@ export function EmergencyMapPage() {
           <h2 className="text-lg font-bold text-foreground">Mapa de Emergência dos Terminais</h2>
         </div>
         {canEdit && (
-          <button onClick={() => setShowAddForm(!showAddForm)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md hover:opacity-90 transition-opacity">
+          <button onClick={() => setShowAddForm(!showAddForm)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity">
             <Plus size={14} /> Novo Elemento
           </button>
         )}
@@ -275,23 +288,40 @@ export function EmergencyMapPage() {
 
       {/* Add element form */}
       {showAddForm && canEdit && (
-        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input placeholder="Nome do elemento" value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground" />
-            <select value={addForm.layerType} onChange={e => setAddForm(f => ({ ...f, layerType: e.target.value as MapLayerType }))} className="px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground">
-              {ALL_LAYER_TYPES.map(lt => <option key={lt} value={lt}>{LAYER_CONFIG[lt].label}</option>)}
-            </select>
+        <div className="bg-card border border-border rounded-lg p-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>Nome do elemento *</label>
+              <input placeholder="Ex.: Extintor CO₂ berço 3" value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Camada</label>
+              <Select value={addForm.layerType} onValueChange={v => setAddForm(f => ({ ...f, layerType: v as MapLayerType }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ALL_LAYER_TYPES.map(lt => <SelectItem key={lt} value={lt} className="cursor-pointer">{LAYER_CONFIG[lt].label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            {user.role === 'admin' && (
+              <div className="sm:col-span-2">
+                <label className={labelCls}>Terminal *</label>
+                <Select value={addForm.terminalId} onValueChange={v => setAddForm(f => ({ ...f, terminalId: v }))}>
+                  <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
+                  <SelectContent>
+                    {visibleTerminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
-          <textarea placeholder="Descrição" value={addForm.description} onChange={e => setAddForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground min-h-[50px]" />
-          {user.role === 'admin' && (
-            <select value={addForm.terminalId} onChange={e => setAddForm(f => ({ ...f, terminalId: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground">
-              <option value="">Selecione o terminal</option>
-              {visibleTerminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          )}
+          <div>
+            <label className={labelCls}>Descrição *</label>
+            <textarea placeholder="Descreva o elemento..." value={addForm.description} onChange={e => setAddForm(f => ({ ...f, description: e.target.value }))} className={`${inputCls} min-h-[50px]`} />
+          </div>
           <div className="flex gap-2">
-            <button onClick={handleAddElement} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg">Cadastrar</button>
-            <button onClick={() => setShowAddForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg">Cancelar</button>
+            <button onClick={handleAddElement} disabled={createElement.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-60">Cadastrar</button>
+            <button onClick={() => setShowAddForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-md cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
           </div>
         </div>
       )}
@@ -395,7 +425,7 @@ export function EmergencyMapPage() {
                       <Icon size={16} style={{ color: cfg.color }} />
                       <h3 className="font-bold text-foreground text-sm">{selectedElement.name}</h3>
                     </div>
-                    <button onClick={() => setSelectedElement(null)} className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
+                    <button onClick={() => setSelectedElement(null)} className="text-muted-foreground hover:text-foreground p-1 cursor-pointer"><X size={16} /></button>
                   </div>
                   <span className="inline-block mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase" style={{ backgroundColor: `${cfg.color}20`, color: cfg.color }}>{cfg.label}</span>
                 </div>
@@ -415,7 +445,7 @@ export function EmergencyMapPage() {
                 </div>
                 {canDelete && (
                   <div className="p-4 border-t border-border">
-                    <button onClick={() => handleDeleteElement(selectedElement.id)} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 transition-colors">
+                    <button onClick={() => setDeleteTarget(selectedElement)} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 transition-colors cursor-pointer">
                       <Trash2 size={13} /> Remover elemento
                     </button>
                   </div>
@@ -435,7 +465,7 @@ export function EmergencyMapPage() {
                       <h3 className="font-bold text-foreground text-sm">{selected.name}</h3>
                       <p className="text-xs text-muted-foreground mt-0.5">{selected.location}</p>
                     </div>
-                    <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
+                    <button onClick={() => setSelected(null)} className="text-muted-foreground hover:text-foreground p-1 cursor-pointer"><X size={16} /></button>
                   </div>
                   <span className="inline-block mt-2 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase" style={{ backgroundColor: `${color}15`, color }}>{statusLabel}</span>
                 </div>
@@ -542,6 +572,29 @@ export function EmergencyMapPage() {
           )}
         </div>
       </div>
+
+      {/* Confirmação de remoção (AlertDialog — substitui a remoção direta) */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="p-1.5 bg-primary/10 rounded-lg"><Trash2 size={16} className="text-primary" /></span>
+              Remover elemento do mapa?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              O elemento <strong className="text-foreground font-semibold">{deleteTarget?.name}</strong>
+              {deleteTarget && <> ({LAYER_CONFIG[deleteTarget.layerType].label})</>} será removido do mapa de emergência.
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90">
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

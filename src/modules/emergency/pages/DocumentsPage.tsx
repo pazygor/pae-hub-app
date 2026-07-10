@@ -1,9 +1,14 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
-import { DocumentType } from '@/lib/types';
+import { DocumentType, PAEDocument } from '@/lib/types';
 import { Plus, FileText, Trash2, Filter, Download, Paperclip, X, Loader2 } from 'lucide-react';
 import { useDocuments, useDocumentMutations, useTerminals } from '@/api';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 
 const DOC_TYPES: DocumentType[] = [
   'Plano de Ação de Emergência',
@@ -31,26 +36,30 @@ export function DocumentsPage() {
   const { data: terminals = [] } = useTerminals();
   const { create, remove } = useDocumentMutations();
   const [showForm, setShowForm] = useState(false);
-  const [filterType, setFilterType] = useState<string>('');
-  const [filterTerminal, setFilterTerminal] = useState<string>('');
+  const [filterType, setFilterType] = useState<string>('all');
+  const [filterTerminal, setFilterTerminal] = useState<string>('all');
+  const [deleteTarget, setDeleteTarget] = useState<PAEDocument | null>(null);
   const [form, setForm] = useState({ title: '', docType: 'Plano de Ação de Emergência' as DocumentType, description: '', fileName: '', terminalId: '' });
 
   if (!user) return null;
 
   const canUpload = user.role === 'admin' || user.role === 'terminal';
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
+  const inputCls = 'w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary';
+  const labelCls = 'block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1';
 
   // O escopo por papel/terminal é do back; aqui só os filtros de tela.
   let documents = allDocuments;
-  if (filterType) documents = documents.filter(d => d.docType === filterType);
-  if (filterTerminal) documents = documents.filter(d => d.terminalId === filterTerminal);
+  if (filterType !== 'all') documents = documents.filter(d => d.docType === filterType);
+  if (filterTerminal !== 'all') documents = documents.filter(d => d.terminalId === filterTerminal);
 
   const getTerminalName = (d: { terminalId: string }) =>
     (d as any).terminalName || terminals.find(t => t.id === d.terminalId)?.name || d.terminalId;
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR');
 
   const handleAdd = () => {
-    if (!form.title || !form.fileName) return;
+    if (!form.title.trim()) { toast.error('Informe o título do documento'); return; }
+    if (!form.fileName.trim()) { toast.error('Informe o nome do arquivo'); return; }
     if (user.role === 'admin' && !form.terminalId) { toast.error('Selecione o terminal'); return; }
     create.mutate(
       {
@@ -71,9 +80,11 @@ export function DocumentsPage() {
     );
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm('Excluir este documento?')) return;
-    remove.mutate(id, { onSuccess: () => toast.success('Documento excluído'), onError });
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    const title = deleteTarget.title;
+    remove.mutate(deleteTarget.id, { onSuccess: () => toast.success(`Documento "${title}" excluído`), onError });
+    setDeleteTarget(null);
   };
 
   return (
@@ -84,7 +95,7 @@ export function DocumentsPage() {
           <h2 className="text-lg font-bold text-foreground">Biblioteca de Documentos</h2>
         </div>
         {canUpload && (
-          <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:opacity-90 transition-opacity">
+          <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity">
             <Plus size={14} /> Novo Documento
           </button>
         )}
@@ -93,48 +104,74 @@ export function DocumentsPage() {
       {/* Filters */}
       <div className="flex flex-wrap gap-2 items-center">
         <Filter size={14} className="text-muted-foreground" />
-        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="px-3 py-1.5 bg-background border border-input rounded-lg text-xs text-foreground">
-          <option value="">Todos os tipos</option>
-          {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+        <Select value={filterType} onValueChange={setFilterType}>
+          <SelectTrigger className="w-auto min-w-[180px] cursor-pointer h-9"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all" className="cursor-pointer">Todos os tipos</SelectItem>
+            {DOC_TYPES.map(t => <SelectItem key={t} value={t} className="cursor-pointer">{t}</SelectItem>)}
+          </SelectContent>
+        </Select>
         {terminals.length > 1 && (
-          <select value={filterTerminal} onChange={e => setFilterTerminal(e.target.value)} className="px-3 py-1.5 bg-background border border-input rounded-lg text-xs text-foreground">
-            <option value="">Todos os terminais</option>
-            {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+          <Select value={filterTerminal} onValueChange={setFilterTerminal}>
+            <SelectTrigger className="w-auto min-w-[160px] cursor-pointer h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="cursor-pointer">Todos os terminais</SelectItem>
+              {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         )}
-        {(filterType || filterTerminal) && (
-          <button onClick={() => { setFilterType(''); setFilterTerminal(''); }} className="text-[10px] text-primary font-bold hover:underline">Limpar filtros</button>
+        {(filterType !== 'all' || filterTerminal !== 'all') && (
+          <button onClick={() => { setFilterType('all'); setFilterTerminal('all'); }} className="text-[10px] text-primary font-bold hover:underline cursor-pointer">Limpar filtros</button>
         )}
         <span className="ml-auto text-[10px] text-muted-foreground font-mono-data">{documents.length} documento(s)</span>
       </div>
 
       {/* Upload form (só metadados — upload real de arquivo na Fase 6) */}
       {showForm && canUpload && (
-        <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+        <div className="bg-card border border-border rounded-lg p-4 space-y-4">
           <div className="flex items-center justify-between mb-1">
             <h3 className="font-bold text-sm text-foreground">Novo Documento</h3>
-            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground"><X size={16} /></button>
+            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X size={16} /></button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input placeholder="Título do documento" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground" />
-            <select value={form.docType} onChange={e => setForm(f => ({ ...f, docType: e.target.value as DocumentType }))} className="px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground">
-              {DOC_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>Título *</label>
+              <input placeholder="Título do documento" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Tipo</label>
+              <Select value={form.docType} onValueChange={v => setForm(f => ({ ...f, docType: v as DocumentType }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DOC_TYPES.map(t => <SelectItem key={t} value={t} className="cursor-pointer">{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            {user.role === 'admin' && (
+              <div className="sm:col-span-2">
+                <label className={labelCls}>Terminal *</label>
+                <Select value={form.terminalId} onValueChange={v => setForm(f => ({ ...f, terminalId: v }))}>
+                  <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
+                  <SelectContent>
+                    {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
-          {user.role === 'admin' && (
-            <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground">
-              <option value="">Selecione o terminal...</option>
-              {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-          )}
-          <textarea placeholder="Descrição" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground min-h-[50px]" />
-          <input placeholder="Nome do arquivo (ex: plano-emergencia.pdf)" value={form.fileName} onChange={e => setForm(f => ({ ...f, fileName: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground" />
+          <div>
+            <label className={labelCls}>Descrição</label>
+            <textarea placeholder="Descrição" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className={`${inputCls} min-h-[50px]`} />
+          </div>
+          <div>
+            <label className={labelCls}>Nome do arquivo *</label>
+            <input placeholder="Ex.: plano-emergencia.pdf" value={form.fileName} onChange={e => setForm(f => ({ ...f, fileName: e.target.value }))} className={inputCls} />
+          </div>
           <div className="flex gap-2">
-            <button onClick={handleAdd} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5">
+            <button onClick={handleAdd} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-1.5">
               {create.isPending && <Loader2 size={12} className="animate-spin" />} Salvar Documento
             </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg">Cancelar</button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-md cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
           </div>
         </div>
       )}
@@ -142,12 +179,12 @@ export function DocumentsPage() {
       {/* Document list */}
       <div className="space-y-2">
         {isLoading && (
-          <p className="p-6 text-sm text-muted-foreground bg-card border border-border rounded-xl text-center flex items-center justify-center gap-2"><Loader2 size={14} className="animate-spin" /> Carregando documentos...</p>
+          <p className="p-6 text-sm text-muted-foreground bg-card border border-border rounded-lg text-center flex items-center justify-center gap-2"><Loader2 size={14} className="animate-spin" /> Carregando documentos...</p>
         )}
-        {isError && !isLoading && <p className="p-6 text-sm text-primary bg-card border border-border rounded-xl text-center">Falha ao carregar documentos da API.</p>}
-        {!isLoading && !isError && documents.length === 0 && <p className="p-6 text-sm text-muted-foreground italic bg-card border border-border rounded-xl text-center">Nenhum documento encontrado.</p>}
+        {isError && !isLoading && <p className="p-6 text-sm text-primary bg-card border border-border rounded-lg text-center">Falha ao carregar documentos da API.</p>}
+        {!isLoading && !isError && documents.length === 0 && <p className="p-6 text-sm text-muted-foreground italic bg-card border border-border rounded-lg text-center">Nenhum documento encontrado.</p>}
         {documents.map(doc => (
-          <div key={doc.id} className="bg-card border border-border rounded-xl p-4 flex items-start gap-4 hover:border-primary/20 transition-colors">
+          <div key={doc.id} className="bg-card border border-border rounded-lg p-4 flex items-start gap-4 hover:border-primary/20 transition-colors">
             <div className="w-10 h-10 bg-secondary rounded-lg flex items-center justify-center text-lg shrink-0">
               {docTypeIcon(doc.docType)}
             </div>
@@ -167,11 +204,11 @@ export function DocumentsPage() {
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              <button className="p-1.5 text-muted-foreground hover:text-primary transition-colors" title="Download">
+              <button className="p-1.5 text-muted-foreground hover:text-primary transition-colors cursor-pointer" title="Download">
                 <Download size={14} />
               </button>
               {canUpload && (
-                <button onClick={() => handleDelete(doc.id)} className="p-1.5 text-muted-foreground hover:text-primary transition-colors" title="Excluir">
+                <button onClick={() => setDeleteTarget(doc)} className="p-1.5 text-muted-foreground hover:text-emergency transition-colors cursor-pointer" title="Excluir">
                   <Trash2 size={14} />
                 </button>
               )}
@@ -179,6 +216,28 @@ export function DocumentsPage() {
           </div>
         ))}
       </div>
+
+      {/* Confirmação de remoção (AlertDialog — substitui o confirm() nativo) */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="p-1.5 bg-primary/10 rounded-lg"><Trash2 size={16} className="text-primary" /></span>
+              Excluir documento?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              O documento <strong className="text-foreground font-semibold">{deleteTarget?.title}</strong> será removido
+              da biblioteca. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90">
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

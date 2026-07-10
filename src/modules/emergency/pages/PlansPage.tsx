@@ -1,25 +1,44 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
-import { PlanStatus } from '@/lib/types';
+import { EmergencyPlan, PlanStatus } from '@/lib/types';
 import { Plus, FileText, Trash2, CheckSquare, Square, Loader2 } from 'lucide-react';
-import { usePlans, usePlanMutations, useTerminals } from '@/api';
+import { usePlans, usePlanMutations, useTerminals, useUsers } from '@/api';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
+
+const STATUS_OPTIONS: { value: PlanStatus; label: string }[] = [
+  { value: 'ativo', label: 'Ativo' },
+  { value: 'inativo', label: 'Inativo' },
+  { value: 'em revisão', label: 'Em Revisão' },
+];
 
 export function PlansPage() {
   const { user } = useAuth();
   const { data: plans = [], isLoading, isError } = usePlans();
   const { data: terminals = [] } = useTerminals();
+  const { data: users = [] } = useUsers(user?.role !== 'entity');
   const { create, update, remove } = usePlanMutations();
   const [showForm, setShowForm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<EmergencyPlan | null>(null);
   const [form, setForm] = useState({ name: '', description: '', responsible: '', status: 'ativo' as PlanStatus, checklistText: '', terminalId: '' });
 
   if (!user) return null;
 
   const canCreate = user.role === 'admin' || user.role === 'terminal';
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
+  const inputCls = 'w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary';
+  const labelCls = 'block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1';
+
+  // Responsável: usuários do terminal onde o plano será criado.
+  const responsibleTerminalId = user.role === 'admin' ? form.terminalId : (user.linkId ?? '');
+  const responsibleOptions = users.filter(u => u.role === 'terminal' && (!responsibleTerminalId || u.linkId === responsibleTerminalId));
 
   const handleAdd = () => {
-    if (!form.name) return;
+    if (!form.name.trim()) { toast.error('Informe o nome do plano'); return; }
     if (user.role === 'admin' && !form.terminalId) { toast.error('Selecione o terminal'); return; }
     const checklist = form.checklistText.split('\n').filter(Boolean).map(text => ({ text: text.trim(), done: false }));
     create.mutate(
@@ -49,9 +68,11 @@ export function PlansPage() {
     update.mutate({ id: planId, input: { checklist } }, { onError });
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm('Remover este plano?')) return;
-    remove.mutate(id, { onSuccess: () => toast.success('Plano removido'), onError });
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    const name = deleteTarget.name;
+    remove.mutate(deleteTarget.id, { onSuccess: () => toast.success(`Plano "${name}" removido`), onError });
+    setDeleteTarget(null);
   };
 
   const statusColor = (s: PlanStatus) =>
@@ -68,36 +89,69 @@ export function PlansPage() {
           <h2 className="text-lg font-bold text-foreground">Planos de Ação de Emergência</h2>
         </div>
         {canCreate && (
-          <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md hover:opacity-90 transition-opacity">
+          <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity">
             <Plus size={14} /> Novo Plano
           </button>
         )}
       </div>
 
       {showForm && (
-        <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input placeholder="Nome do plano" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground" />
-            <input placeholder="Responsável" value={form.responsible} onChange={e => setForm(f => ({ ...f, responsible: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground" />
-            <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as PlanStatus }))} className="px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground">
-              <option value="ativo">Ativo</option>
-              <option value="inativo">Inativo</option>
-              <option value="em revisão">Em Revisão</option>
-            </select>
+        <div className="bg-card border border-border rounded-lg p-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelCls}>Nome do plano *</label>
+              <input placeholder="Ex.: PAE Incêndio TECON" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Responsável</label>
+              <Select
+                value={form.responsible || undefined}
+                onValueChange={v => setForm(f => ({ ...f, responsible: v }))}
+                disabled={user.role === 'admin' && !form.terminalId}
+              >
+                <SelectTrigger className="cursor-pointer">
+                  <SelectValue placeholder={user.role === 'admin' && !form.terminalId ? 'Selecione o terminal primeiro' : 'Selecione o responsável...'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {responsibleOptions.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum usuário no terminal</div>}
+                  {responsibleOptions.map(u => <SelectItem key={u.id} value={u.name} className="cursor-pointer">{u.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className={labelCls}>Status</label>
+              <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v as PlanStatus }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map(o => <SelectItem key={o.value} value={o.value} className="cursor-pointer">{o.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             {user.role === 'admin' && (
-              <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground">
-                <option value="">Selecione o terminal...</option>
-                {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              <div>
+                <label className={labelCls}>Terminal *</label>
+                <Select value={form.terminalId} onValueChange={v => setForm(f => ({ ...f, terminalId: v, responsible: '' }))}>
+                  <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
+                  <SelectContent>
+                    {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
           </div>
-          <textarea placeholder="Descrição" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground min-h-[60px]" />
-          <textarea placeholder="Checklist (uma ação por linha)" value={form.checklistText} onChange={e => setForm(f => ({ ...f, checklistText: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground min-h-[60px]" />
+          <div>
+            <label className={labelCls}>Descrição</label>
+            <textarea placeholder="Descreva o plano..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className={`${inputCls} min-h-[60px]`} />
+          </div>
+          <div>
+            <label className={labelCls}>Checklist <span className="normal-case font-normal text-muted-foreground/70">(uma ação por linha)</span></label>
+            <textarea placeholder={'Acionar alarme\nEvacuar área\nContatar bombeiros'} value={form.checklistText} onChange={e => setForm(f => ({ ...f, checklistText: e.target.value }))} className={`${inputCls} min-h-[60px]`} />
+          </div>
           <div className="flex gap-2">
-            <button onClick={handleAdd} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md disabled:opacity-60 flex items-center gap-1.5">
+            <button onClick={handleAdd} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-1.5">
               {create.isPending && <Loader2 size={12} className="animate-spin" />} Salvar
             </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-md">Cancelar</button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-md cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
           </div>
         </div>
       )}
@@ -120,7 +174,7 @@ export function PlansPage() {
                 <p className="text-[10px] text-muted-foreground mt-1">{getTerminalName(p)} · Resp: {p.responsible}</p>
               </div>
               {canCreate && (
-                <button onClick={() => handleDelete(p.id)} className="text-muted-foreground hover:text-emergency transition-colors p-1"><Trash2 size={14} /></button>
+                <button onClick={() => setDeleteTarget(p)} className="text-muted-foreground hover:text-emergency transition-colors p-1 cursor-pointer"><Trash2 size={14} /></button>
               )}
             </div>
             {p.checklist.length > 0 && (
@@ -142,6 +196,28 @@ export function PlansPage() {
           </div>
         ))}
       </div>
+
+      {/* Confirmação de remoção (AlertDialog — substitui o confirm() nativo) */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="p-1.5 bg-primary/10 rounded-lg"><Trash2 size={16} className="text-primary" /></span>
+              Remover plano?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              O plano <strong className="text-foreground font-semibold">{deleteTarget?.name}</strong> será removido.
+              Se ele estava ativo, deixará de ser oferecido na Sala de Situação. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90">
+              Remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
