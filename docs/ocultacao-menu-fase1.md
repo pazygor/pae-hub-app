@@ -1,161 +1,77 @@
-# Ocultação de itens do menu — Fase 1
+# Ocultação de itens — histórico e estado atual
 
-> **Status:** itens ocultos temporariamente para a **primeira entrega** do sistema.
-> **Objetivo:** focar a entrega inicial no conjunto de telas priorizadas (integração
-> front-end + back-end). Os itens abaixo voltam na **Fase 2** para refinamento e
-> desenvolvimento completo.
-
-## O que foi ocultado
-
-Nesta primeira entrega **não devem aparecer** no menu lateral:
-
-| Item          | id do NavItem | Rota                      | Motivo                                  |
-| ------------- | ------------- | ------------------------- | --------------------------------------- |
-| Meu Painel    | `my-panel`    | `/meu-painel`             | Fase 2                                  |
-| Documentos    | `documents`   | `/documentos`             | Fase 2                                  |
-| **Segurança Operacional (seção inteira)** | | | Toda a seção é Fase 2 |
-| → Visão Geral | `safety`      | `/seguranca`              | Fase 2                                  |
-| → Treinamentos| `trainings`   | `/seguranca/treinamentos` | Fase 2                                  |
-| → EPIs        | `epis`        | `/seguranca/epis`         | Fase 2                                  |
-| → Conformidade| `compliance`  | `/seguranca/conformidade` | Fase 2                                  |
-
-Além dos itens de menu, também foi ocultado:
-
-| Elemento | Onde | Motivo |
-| -------- | ---- | ------ |
-| **Modal "Pendências Operacionais"** (exibido após o login) | `PendencyAlertModal` | Mostra pendências de Treinamentos/EPIs/Conformidade — todos de Segurança Operacional (Fase 2) |
-| **"Acessar demonstração"** + painel de acesso rápido (credenciais de demo) na tela de login | `LoginPage` | Removido a pedido do gestor para a entrega da Fase 1 |
-
-## Como está sendo ocultado
-
-A ocultação é feita **na fonte única de navegação**, o arquivo
-[`src/lib/nav-config.ts`](../src/lib/nav-config.ts).
-
-O menu lateral (`AppSidebar`), as rotas, os guards de acesso, a busca global e os
-títulos de página derivam todos da lista `NAV_CONFIG`. Portanto, **comentar o item
-nessa lista remove-o do menu automaticamente** — não é preciso mexer no
-`AppSidebar.tsx`.
-
-> Observação: a seção "Segurança Operacional" no menu não tem um bloco próprio de
-> código — ela é gerada dinamicamente pelo `AppSidebar` a partir do campo
-> `section` dos itens. Ao comentar os 4 itens da seção, o cabeçalho "Segurança
-> Operacional" também deixa de ser renderizado (não sobra título vazio).
-
-### Alterações aplicadas em `nav-config.ts`
-
-1. **Itens comentados** dentro do array `NAV_CONFIG` (cada um marcado com
-   `// [OCULTO FASE 1 — ver docs/ocultacao-menu-fase1.md]`):
-   - `my-panel`
-   - `documents`
-   - `safety`, `trainings`, `epis`, `compliance`
-
-2. **Ícones movidos para comentário** no `import` do `lucide-react`, para não
-   deixar imports sem uso (o eslint quebraria o build):
-   - `UserCircle` (era usado por `my-panel`)
-   - `FolderOpen` (era usado por `documents`)
-   - `GraduationCap` (era usado por `trainings`)
-   - `HardHat` (era usado por `epis`)
-   - `ClipboardCheck` (era usado por `compliance`)
-   - `ShieldCheck` **não** foi removido: ainda é usado pelo item `access-levels`.
-
-> As **rotas** correspondentes em [`src/app/router.tsx`](../src/app/router.tsx) **não
-> foram alteradas**. Elas continuam existindo, então acessar a URL diretamente ainda
-> funciona — apenas o item deixa de aparecer no menu. Se o desejo for bloquear
-> também o acesso por URL, veja a seção "Bloqueio total (opcional)" abaixo.
-
-### Modal "Pendências Operacionais" (pós-login)
-
-O componente [`src/app/layout/PendencyAlertModal.tsx`](../src/app/layout/PendencyAlertModal.tsx)
-exibe, logo após o login, um alerta com pendências de **Treinamentos, EPIs e
-Conformidade** — todos pertencentes à Segurança Operacional. Como essa seção é Fase 2,
-o modal foi desativado.
-
-Ocultação feita em [`src/app/layout/AppShell.tsx`](../src/app/layout/AppShell.tsx):
-
-1. O **import** `import { PendencyAlertModal } from './PendencyAlertModal';` foi
-   comentado.
-2. A **renderização** `<PendencyAlertModal />` (dentro do `return` do `AppShell`) foi
-   comentada.
-
-O componente `PendencyAlertModal.tsx` **em si não foi alterado** — continua completo
-para a Fase 2.
-
-### "Acessar demonstração" na tela de login (pedido do gestor)
-
-A tela de login ([`src/modules/auth/pages/LoginPage.tsx`](../src/modules/auth/pages/LoginPage.tsx))
-tinha um botão **"Acessar demonstração"** que revelava um painel de **acesso rápido**
-com as credenciais de demonstração (Administrador, Estratégico, Tático, Operacional,
-Entidade). O gestor pediu para removê-lo na entrega da Fase 1.
-
-Ocultação feita no próprio `LoginPage.tsx` (tudo marcado com `[OCULTO FASE 1 ...]`):
-
-1. O **estado** `const [showDemo, setShowDemo] = useState(false);` foi comentado.
-2. A função de **login rápido** `quickLogin(...)` foi comentada.
-3. O **bloco JSX** do botão "Acessar demonstração" e do painel de acesso rápido foi
-   comentado (envolvido em `{/* ... */}`).
-
-O formulário de login normal (email + senha + "Entrar") **permanece intacto**.
-
-## Como reverter (Fase 2)
-
-Para trazer os itens de volta, no arquivo
-[`src/lib/nav-config.ts`](../src/lib/nav-config.ts):
-
-1. **Descomente os itens** no array `NAV_CONFIG` (remova o `//` das linhas marcadas
-   com `[OCULTO FASE 1 ...]`):
-   - `my-panel`
-   - `documents`
-   - os 4 itens da seção `Segurança Operacional` (`safety`, `trainings`, `epis`,
-     `compliance`)
-
-2. **Restaure os ícones no `import`** do `lucide-react`. Descomente a linha:
-   ```ts
-   // UserCircle, FolderOpen, GraduationCap, HardHat, ClipboardCheck,
-   ```
-   e integre esses nomes de volta à lista de imports (ou simplesmente remova o `//`).
-
-3. Rode o lint/type-check para confirmar que não há imports sobrando nem faltando:
-   ```bash
-   npm run lint
-   ```
-
-Não é necessário alterar `AppSidebar.tsx`, `router.tsx` nem `access-control` — ao
-descomentar os itens, o menu, a seção e a navegação voltam a funcionar
-automaticamente.
-
-**Para reativar o modal "Pendências Operacionais"**, em
-[`src/app/layout/AppShell.tsx`](../src/app/layout/AppShell.tsx) descomente:
-
-- o import `import { PendencyAlertModal } from './PendencyAlertModal';`
-- a linha `<PendencyAlertModal />` dentro do `return`.
-
-**Para reativar o "Acessar demonstração"**, em
-[`src/modules/auth/pages/LoginPage.tsx`](../src/modules/auth/pages/LoginPage.tsx)
-descomente os três trechos marcados com `[OCULTO FASE 1 ...]`:
-
-- o estado `const [showDemo, setShowDemo] = useState(false);`
-- a função `quickLogin(...)`
-- o bloco JSX do botão/painel de demonstração (remover o `{/*` e `*/}`).
-
-## Bloqueio total (opcional)
-
-Se em algum momento for preciso impedir também o **acesso direto por URL** (e não só
-esconder do menu), comente as `<Route>` correspondentes em
-[`src/app/router.tsx`](../src/app/router.tsx). Isso **não** é necessário para a
-ocultação do menu e **não** foi feito nesta Fase 1.
+> **Atualização (2026-07-11):** por exigência dos acionistas, **todos os itens de
+> menu e o modal de pendências voltaram** para a entrega v1. A ocultação abaixo era
+> temporária e **foi revertida**. O único item que **permanece oculto** é o
+> "Acessar demonstração" da tela de login (pedido do gestor — ver seção final).
 
 ---
 
-### Telas em foco na primeira entrega (referência)
+## 1. Estado atual (o que está visível/oculto)
 
-Núcleo:
-Usuários · Permissões · Níveis de Acesso · Terminais · Entidades ·
-Acionamento de Entidades · Dashboard (parcial) · Centro de Operações
-_(Meu Painel = Fase 2)_
+### ✅ Restaurados para o v1 (exigência dos acionistas)
 
-PAE:
-Orquestração · Riscos · Plano de Ação · **Ocorrências (prioridade)** ·
-Mapa de Emergência · Crachá do PAE
-_(AI Command = Fase 2 · Documentos = Fase 2)_
+| Item | id do NavItem | Rota | Situação |
+| ---- | ------------- | ---- | -------- |
+| Meu Painel | `my-panel` | `/meu-painel` | **Visível** |
+| Documentos | `documents` | `/documentos` | **Visível** |
+| Segurança Operacional → Visão Geral | `safety` | `/seguranca` | **Visível** |
+| Segurança Operacional → Treinamentos | `trainings` | `/seguranca/treinamentos` | **Visível** |
+| Segurança Operacional → EPIs | `epis` | `/seguranca/epis` | **Visível** |
+| Segurança Operacional → Conformidade | `compliance` | `/seguranca/conformidade` | **Visível** |
+| Modal "Pendências Operacionais" (pós-login) | `PendencyAlertModal` | — | **Ativo** |
 
-Segurança Operacional: **tudo é Fase 2.**
+### ❌ Ainda oculto
+
+| Elemento | Onde | Motivo |
+| -------- | ---- | ------ |
+| "Acessar demonstração" + painel de acesso rápido (credenciais de demo) | `LoginPage` | Pedido do gestor (não faz parte do escopo de features dos acionistas) |
+
+---
+
+## 2. Como a restauração foi feita
+
+A navegação deriva toda da lista `NAV_CONFIG` em
+[`src/lib/nav-config.ts`](../src/lib/nav-config.ts) — descomentar os itens já os traz
+de volta ao menu, à busca global e aos títulos de página. As rotas em
+[`src/app/router.tsx`](../src/app/router.tsx) nunca foram removidas.
+
+Alterações revertidas:
+
+1. **`nav-config.ts`** — descomentados os itens `my-panel`, `documents`, `safety`,
+   `trainings`, `epis`, `compliance` no array `NAV_CONFIG`; ícones (`UserCircle`,
+   `FolderOpen`, `GraduationCap`, `HardHat`, `ClipboardCheck`) reintegrados ao
+   `import` do `lucide-react`.
+2. **`src/app/layout/AppShell.tsx`** — reativados o `import` do `PendencyAlertModal`
+   e a renderização `<PendencyAlertModal />` dentro do `return`.
+
+> A seção "Segurança Operacional" no menu é gerada dinamicamente pelo `AppSidebar`
+> a partir do campo `section` dos itens — com os 4 itens de volta, o cabeçalho da
+> seção reaparece automaticamente.
+
+---
+
+## 3. "Acessar demonstração" na tela de login (segue oculto)
+
+A tela de login ([`src/modules/auth/pages/LoginPage.tsx`](../src/modules/auth/pages/LoginPage.tsx))
+tinha um botão **"Acessar demonstração"** que revelava um painel de **acesso rápido**
+com as credenciais de demonstração. O **gestor pediu para removê-lo**, e essa remoção
+**permanece** (não é escopo dos acionistas).
+
+Continua oculto no `LoginPage.tsx` (marcado com `[OCULTO FASE 1 ...]`):
+
+1. O estado `const [showDemo, setShowDemo] = useState(false);` — comentado.
+2. A função `quickLogin(...)` — comentada.
+3. O bloco JSX do botão/painel de demonstração — comentado (`{/* ... */}`).
+
+O formulário de login normal (email + senha + "Entrar") permanece intacto.
+
+### Se o gestor pedir para reativar o "Acessar demonstração"
+No `LoginPage.tsx`, descomente os três trechos marcados com `[OCULTO FASE 1 ...]`:
+- o estado `showDemo`;
+- a função `quickLogin(...)`;
+- o bloco JSX (remover o `{/*` e `*/}`).
+
+---
+
+_© M1 — Documento mantido como histórico da ocultação da Fase 1 e do estado atual._

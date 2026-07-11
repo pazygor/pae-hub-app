@@ -17,16 +17,22 @@ autenticação/RBAC, cadastros base encadeados, e o ciclo operacional de emergê
 
 ## 2. Escopo
 
-### Dentro do escopo (Fase 1)
+### Dentro do escopo (v1 — atualizado 2026-07-11)
 Autenticação · Usuários · Permissões · Níveis de Acesso · Terminais · Entidades ·
 Acionamento de Entidades · Dashboard (parcial) · **COP** · Orquestração · Riscos ·
 Planos de Ação · **Ocorrências (prioridade)** · Mapa de Emergência · Crachá do PAE
-(WhatsApp) · recursos transversais (Global Search, Presentation Mode, isolamento).
+(WhatsApp) · **Documentos** · **Segurança Operacional (Treinamentos, EPIs,
+Conformidade)** · **Meu Painel** · **modal de Pendências Operacionais** · recursos
+transversais (Global Search, Presentation Mode, isolamento).
 
-### Fora do escopo (Fase 2 — não testar como entrega)
-Meu Painel · AI Command · Documentos · Segurança Operacional (Treinamentos, EPIs,
-Conformidade) · modal de Pendências Operacionais. Para estes, o único teste é de
-**regressão de ocultação** (suíte S9): confirmar que **não aparecem** no menu.
+> **Mudança de escopo:** por exigência dos acionistas, Segurança Operacional,
+> Documentos, Meu Painel e o modal de pendências **entraram no v1** (antes eram
+> Fase 2). Novas suítes: **S11** (Segurança Operacional), **S12** (Documentos),
+> **S13** (Meu Painel & Pendências).
+
+### Fora do escopo
+AI Command (existe no código, sem foco de entrega). Na tela de login, o "Acessar
+demonstração" **permanece oculto** (pedido do gestor) — coberto por S9.
 
 ---
 
@@ -171,14 +177,19 @@ Ordem recomendada: **Terminais → Entidades → Usuários → Permissões → N
 | S8.5 | Busca | Filtrar por nome/função/vínculo | Lista filtra corretamente | — |
 | S8.6 | Modo Apresentação | Ativar e revisitar | Nome/telefone/e-mail mascarados; WhatsApp/e-mail desativados | `presentation-mode` |
 
-### S9 — Regressão da ocultação Fase 1 (P0)
+### S9 — Menu completo do v1 e login (P0)
+
+> Atualizado (2026-07-11): a ocultação de Fase 1 foi **revertida** por exigência dos
+> acionistas — o menu passa a exibir **todos** os módulos. Só o "Acessar demonstração"
+> do login segue oculto (pedido do gestor).
 
 | # | Caso | Resultado esperado |
 |---|------|--------------------|
-| S9.1 | Menu lateral | **Não** exibe "Meu Painel", "Documentos" nem a seção "Segurança Operacional" (Visão Geral/Treinamentos/EPIs/Conformidade) |
-| S9.2 | Cabeçalho de seção | O título "Segurança Operacional" **não** é renderizado (sem título órfão) |
-| S9.3 | Modal pós-login | O modal "Pendências Operacionais" **não** aparece após o login |
-| S9.4 | Build limpo | `tsc --noEmit` e `npm run build` sem erros (nenhum import órfão) |
+| S9.1 | Menu lateral | **Exibe** "Meu Painel", "Documentos" e a seção "Segurança Operacional" (Visão Geral/Treinamentos/EPIs/Conformidade), além do núcleo e do PAE |
+| S9.2 | Cabeçalho de seção | O título "Segurança Operacional" **é** renderizado sobre seus 4 itens |
+| S9.3 | Modal pós-login | O modal "Pendências Operacionais" **aparece** após o login para usuário com pendências (ver S13.1) |
+| S9.4 | Login | A tela de login **não** mostra "Acessar demonstração" (segue oculto) |
+| S9.5 | Build limpo | `tsc --noEmit` e `npm run build` sem erros |
 
 ### S10 — Isolamento multi-tenant e transversais (P0/P1)
 
@@ -190,6 +201,32 @@ Ordem recomendada: **Terminais → Entidades → Usuários → Permissões → N
 | S10.4 | Global Search (Ctrl+K) | Abrir paleta e navegar | Vai à tela escolhida; só sugere telas permitidas |
 | S10.5 | Scrollbars | Rolar conteúdo e menu | Scrollbar customizada (hover vermelho); sidebar com variante escura |
 | S10.6 | Mobile | Viewport ≤780px | Painel mobile de ações; hold-to-confirm de 2s para emergência |
+
+### S11 — Segurança Operacional (P1 — entrou no v1)
+
+| # | Caso | Passos | Resultado esperado | Integração |
+|---|------|--------|--------------------|------------|
+| S11.1 | Treinamentos CRUD + atribuição | `/seguranca/treinamentos` → criar treinamento obrigatório → **Atribuir** a um usuário (conclusão/validade) | Treinamento listado (obrigatório); atribuição válida; usuário não atribuído fica **pendente** | `POST /trainings`, `POST /trainings/:id/assign` |
+| S11.2 | EPIs CRUD + entrega | `/seguranca/epis` → cadastrar EPI → **Entregar EPI** a um usuário | EPI listado; entrega com responsável/validade; status do ciclo de vida | `POST /epis`, `POST /epis/:id/deliver` |
+| S11.3 | Conformidade CRUD | `/seguranca/conformidade` → novo item (status conforme/atenção/não-conforme, área, responsável) | Item listado com status/área; não-conforme alimenta pendências | `POST/PUT /compliance` |
+| S11.4 | Visão Geral (admin) | `/seguranca` | Indicadores do Centro de Segurança Operacional agregam trainings/EPIs/compliance; **não-admin vê "Acesso Restrito"** | `GET /dashboard` (safety) |
+| S11.5 | Isolamento/licenciamento | Como tático do terminal | Vê só os dados de Segurança do próprio terminal (submódulos ativos) | escopo por terminal |
+
+### S12 — Documentos (P1 — entrou no v1)
+
+| # | Caso | Passos | Resultado esperado | Integração |
+|---|------|--------|--------------------|------------|
+| S12.1 | Documento CRUD | `/documentos` → Novo (título, tipo, terminal, nome do arquivo) | Documento listado, filtrável por tipo; persiste após F5 | `POST/PUT/DELETE /pae-documents` |
+| S12.2 | Isolamento | Como tático/entidade | Vê só os documentos do(s) terminal(is) visível(is) | escopo por terminal |
+| S12.3 | Upload de arquivo | Campo de anexo/arquivo | Metadado (nome) registrado; **upload real do binário é Fase 6** | placeholder |
+
+### S13 — Meu Painel & Pendências (P1 — entrou no v1)
+
+| # | Caso | Passos | Resultado esperado | Integração |
+|---|------|--------|--------------------|------------|
+| S13.1 | Modal de pendências | Logar como usuário com treinamento obrigatório pendente / EPI a vencer | Modal "Pendências Operacionais" aparece após o login, listando as pendências do **próprio** usuário | `useTrainings`/`useEpis`/`useCompliance` |
+| S13.2 | Meu Painel | `/meu-painel` (operacional) | Vê Treinamentos (com "Concluir"), EPIs (confirmar) e Conformidade próprios; concluir remove a pendência | mutations de safety |
+| S13.3 | Pendência por usuário | Logar como usuário que concluiu o treinamento | O modal **não** lista aquele treinamento (cálculo por usuário) | — |
 
 ---
 
@@ -224,7 +261,8 @@ a **timeline permanece imutável** e o **isolamento** é respeitado em cada perf
 - ✅ 100% dos casos **P0** aprovados (S1, S2, S3, S4, S5, S9, isolamento S10.1/S10.2).
 - ✅ Fluxo E2E consolidado (seção 6) executado de ponta a ponta com sucesso.
 - ✅ Dados criados via UI **persistidos** no PostgreSQL (sobrevivem a refresh e re-login).
-- ✅ Nenhum item de Fase 2 visível no menu (S9).
+- ✅ **Todos os módulos do v1 visíveis e funcionais** (incl. Segurança Operacional,
+  Documentos, Meu Painel — S11/S12/S13); só o "Acessar demonstração" do login oculto (S9).
 - ✅ `npm run build` e `tsc --noEmit` sem erros; `npm run lint` sem erros novos.
 - ⚠️ Casos P1/P2 pendentes registrados como known issues (não bloqueiam a entrega).
 

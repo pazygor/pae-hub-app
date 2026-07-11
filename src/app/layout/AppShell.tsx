@@ -9,8 +9,7 @@ import { GlobalSearch } from '@/components/common/GlobalSearch';
 import { PageLoader } from '@/components/common/PageLoader';
 import { AppSidebar } from './AppSidebar';
 import { MobileShell } from './MobileShell';
-// [OCULTO FASE 1 — ver docs/ocultacao-menu-fase1.md] Modal de pendências (Segurança Operacional = Fase 2)
-// import { PendencyAlertModal } from './PendencyAlertModal';
+import { PendencyAlertModal } from './PendencyAlertModal';
 import { useEmergencyDispatch } from './EmergencyDispatchProvider';
 import { useViewMode } from './ViewModeProvider';
 import { headerLabelForPath, pathForView, situationRoomPath } from '@/lib/nav-config';
@@ -63,8 +62,7 @@ export function AppShell() {
 
   return (
     <div className="flex h-svh bg-background overflow-hidden">
-      {/* [OCULTO FASE 1 — ver docs/ocultacao-menu-fase1.md] Modal de pendências operacionais (Treinamentos/EPIs/Conformidade = Segurança Operacional, Fase 2) */}
-      {/* <PendencyAlertModal /> */}
+      <PendencyAlertModal />
 
       <GlobalSearch
         open={showSearch}
