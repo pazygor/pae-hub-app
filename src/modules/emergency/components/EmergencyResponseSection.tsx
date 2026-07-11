@@ -47,6 +47,8 @@ export function EmergencyResponseSection({ occurrence, plans, onActivate, onActi
     onActionComplete(occurrence.id, action.text);
   };
 
+  // Ocorrência resolvida não oferece resposta de emergência (nada a acionar).
+  if (occurrence.status === 'resolvido') return null;
   if (!isEmergencyActive && !canActivate) return null;
 
   return (

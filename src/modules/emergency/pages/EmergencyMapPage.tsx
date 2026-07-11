@@ -33,7 +33,7 @@ export function EmergencyMapPage() {
   const { create: createElement, remove: removeElement } = useMapElementMutations();
   const [selected, setSelected] = useState<Terminal | null>(null);
   const [activeLayers, setActiveLayers] = useState<Set<MapLayerType>>(new Set());
-  const [showLayerPanel, setShowLayerPanel] = useState(true);
+  const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [addForm, setAddForm] = useState({ name: '', layerType: 'fire_equipment' as MapLayerType, description: '', terminalId: '' });
   const [selectedElement, setSelectedElement] = useState<MapElement | null>(null);
