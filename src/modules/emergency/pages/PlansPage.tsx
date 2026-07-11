@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { EmergencyPlan, PlanStatus } from '@/lib/types';
-import { Plus, FileText, Trash2, CheckSquare, Square, Loader2 } from 'lucide-react';
+import { Plus, FileText, Trash2, CheckSquare, Square, Loader2, Pencil } from 'lucide-react';
 import { usePlans, usePlanMutations, useTerminals, useUsers } from '@/api';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import {
@@ -23,6 +23,7 @@ export function PlansPage() {
   const { data: users = [] } = useUsers(user?.role !== 'entity');
   const { create, update, remove } = usePlanMutations();
   const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<EmergencyPlan | null>(null);
   const [form, setForm] = useState({ name: '', description: '', responsible: '', status: 'ativo' as PlanStatus, checklistText: '', terminalId: '' });
 
@@ -37,28 +38,43 @@ export function PlansPage() {
   const responsibleTerminalId = user.role === 'admin' ? form.terminalId : (user.linkId ?? '');
   const responsibleOptions = users.filter(u => u.role === 'terminal' && (!responsibleTerminalId || u.linkId === responsibleTerminalId));
 
-  const handleAdd = () => {
+  const emptyForm = { name: '', description: '', responsible: '', status: 'ativo' as PlanStatus, checklistText: '', terminalId: '' };
+  const openNew = () => { setForm(emptyForm); setEditId(null); setShowForm(true); };
+  const openEdit = (p: EmergencyPlan) => {
+    setForm({
+      name: p.name,
+      description: p.description,
+      responsible: p.responsible || '',
+      status: p.status,
+      checklistText: p.checklist.map(c => c.text).join('\n'),
+      terminalId: p.terminalId || '',
+    });
+    setEditId(p.id);
+    setShowForm(true);
+  };
+  const closeForm = () => { setShowForm(false); setEditId(null); setForm(emptyForm); };
+
+  const handleSave = () => {
     if (!form.name.trim()) { toast.error('Informe o nome do plano'); return; }
-    if (user.role === 'admin' && !form.terminalId) { toast.error('Selecione o terminal'); return; }
-    const checklist = form.checklistText.split('\n').filter(Boolean).map(text => ({ text: text.trim(), done: false }));
-    create.mutate(
-      {
-        name: form.name,
-        description: form.description,
-        responsible: form.responsible || undefined,
-        checklist,
-        status: form.status,
-        terminalId: user.role === 'admin' ? form.terminalId : undefined,
-      },
-      {
-        onSuccess: () => {
-          setForm({ name: '', description: '', responsible: '', status: 'ativo', checklistText: '', terminalId: '' });
-          setShowForm(false);
-          toast.success('Plano cadastrado');
-        },
-        onError,
-      },
-    );
+    if (!editId && user.role === 'admin' && !form.terminalId) { toast.error('Selecione o terminal'); return; }
+    // Ao editar, preserva o progresso (done) dos itens de checklist cujo texto não mudou.
+    const original = editId ? (plans.find(p => p.id === editId)?.checklist ?? []) : [];
+    const checklist = form.checklistText.split('\n').filter(Boolean).map(line => {
+      const text = line.trim();
+      const ex = original.find(c => c.text === text);
+      return { text, done: ex?.done ?? false };
+    });
+    const input = {
+      name: form.name,
+      description: form.description,
+      responsible: form.responsible || undefined,
+      checklist,
+      status: form.status,
+      ...(user.role === 'admin' && form.terminalId ? { terminalId: form.terminalId } : {}),
+    };
+    const onSuccess = () => { closeForm(); toast.success(editId ? 'Plano atualizado' : 'Plano cadastrado'); };
+    if (editId) update.mutate({ id: editId, input }, { onSuccess, onError });
+    else create.mutate(input, { onSuccess, onError });
   };
 
   const toggleChecklist = (planId: string, idx: number) => {
@@ -89,7 +105,7 @@ export function PlansPage() {
           <h2 className="text-lg font-bold text-foreground">Planos de Ação de Emergência</h2>
         </div>
         {canCreate && (
-          <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity">
+          <button onClick={() => (showForm ? closeForm() : openNew())} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity">
             <Plus size={14} /> Novo Plano
           </button>
         )}
@@ -97,6 +113,7 @@ export function PlansPage() {
 
       {showForm && (
         <div className="bg-card border border-border rounded-lg p-4 space-y-4">
+          <p className="text-sm font-bold text-foreground">{editId ? 'Editar Plano' : 'Novo Plano'}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Nome do plano *</label>
@@ -148,10 +165,10 @@ export function PlansPage() {
             <textarea placeholder={'Acionar alarme\nEvacuar área\nContatar bombeiros'} value={form.checklistText} onChange={e => setForm(f => ({ ...f, checklistText: e.target.value }))} className={`${inputCls} min-h-[60px]`} />
           </div>
           <div className="flex gap-2">
-            <button onClick={handleAdd} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-1.5">
-              {create.isPending && <Loader2 size={12} className="animate-spin" />} Salvar
+            <button onClick={handleSave} disabled={create.isPending || update.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-1.5">
+              {(create.isPending || update.isPending) && <Loader2 size={12} className="animate-spin" />} Salvar
             </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-md cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
+            <button onClick={closeForm} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-md cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
           </div>
         </div>
       )}
@@ -174,7 +191,10 @@ export function PlansPage() {
                 <p className="text-[10px] text-muted-foreground mt-1">{getTerminalName(p)} · Resp: {p.responsible}</p>
               </div>
               {canCreate && (
-                <button onClick={() => setDeleteTarget(p)} className="text-muted-foreground hover:text-emergency transition-colors p-1 cursor-pointer"><Trash2 size={14} /></button>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => openEdit(p)} title="Editar" className="text-muted-foreground hover:text-primary transition-colors p-1 cursor-pointer"><Pencil size={14} /></button>
+                  <button onClick={() => setDeleteTarget(p)} title="Excluir" className="text-muted-foreground hover:text-emergency transition-colors p-1 cursor-pointer"><Trash2 size={14} /></button>
+                </div>
               )}
             </div>
             {p.checklist.length > 0 && (
