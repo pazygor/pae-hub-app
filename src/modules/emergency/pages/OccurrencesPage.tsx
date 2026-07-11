@@ -179,7 +179,7 @@ export function OccurrencesPage() {
   };
 
   const addTimelineEvent = (occId: string) => {
-    if (!timelineForm.description) return;
+    if (!timelineForm.description.trim()) { toast.error('Informe a descrição do evento'); return; }
     addTimeline.mutate(
       { id: occId, input: { type: timelineForm.type, description: timelineForm.description, attachment: timelineForm.attachment || undefined } },
       {
@@ -519,17 +519,70 @@ export function OccurrencesPage() {
                     {canAddTimeline && (
                       <div className="mt-4 pt-4 border-t border-border">
                         {showTimelineForm === o.id ? (
-                          <div className="space-y-2">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              <select value={timelineForm.type} onChange={e => setTimelineForm(f => ({ ...f, type: e.target.value as TimelineEventType }))} className="px-3 py-2 bg-background border border-input rounded-lg text-xs text-foreground">
-                                {EVENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                              </select>
-                              <input placeholder="Anexo (nome do arquivo)" value={timelineForm.attachment} onChange={e => setTimelineForm(f => ({ ...f, attachment: e.target.value }))} className="px-3 py-2 bg-background border border-input rounded-lg text-xs text-foreground placeholder:text-muted-foreground" />
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Tipo de Evento</label>
+                                <Select value={timelineForm.type} onValueChange={v => setTimelineForm(f => ({ ...f, type: v as TimelineEventType }))}>
+                                  <SelectTrigger className="cursor-pointer capitalize"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {EVENT_TYPES.map(t => <SelectItem key={t} value={t} className="cursor-pointer capitalize">{t}</SelectItem>)}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                                  Anexo <span className="text-muted-foreground/60 normal-case font-normal">(PDF, Word ou Excel — opcional)</span>
+                                </label>
+                                {/* Seletor de arquivo próprio (PT-BR) — o input nativo mostra
+                                    "Choose File / No file chosen" no idioma do navegador, sem como traduzir. */}
+                                <div className="flex items-center gap-2 rounded-md border border-input bg-background p-1.5">
+                                  <label
+                                    htmlFor={`tl-file-${o.id}`}
+                                    className="shrink-0 px-3 py-1.5 bg-secondary text-secondary-foreground text-xs font-bold rounded-md cursor-pointer hover:bg-secondary/80 transition-colors"
+                                  >
+                                    Selecionar arquivo
+                                  </label>
+                                  <span className="text-xs text-muted-foreground truncate flex-1">
+                                    {timelineForm.attachment || 'Nenhum arquivo selecionado'}
+                                  </span>
+                                  {timelineForm.attachment && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setTimelineForm(f => ({ ...f, attachment: '' }))}
+                                      className="shrink-0 text-muted-foreground hover:text-primary transition-colors px-1.5"
+                                      title="Remover anexo"
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                  <input
+                                    id={`tl-file-${o.id}`}
+                                    type="file"
+                                    accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                    onChange={e => setTimelineForm(f => ({ ...f, attachment: e.target.files?.[0]?.name ?? '' }))}
+                                    className="hidden"
+                                  />
+                                </div>
+                                {timelineForm.attachment ? (
+                                  <p className="text-[10px] text-primary flex items-center gap-1">
+                                    <Paperclip size={10} /> {timelineForm.attachment}
+                                    <span className="text-muted-foreground">— só o nome é registrado (upload real na Fase 6)</span>
+                                  </p>
+                                ) : (
+                                  <p className="text-[10px] text-muted-foreground/70">O arquivo não é enviado ainda — apenas o nome é registrado.</p>
+                                )}
+                              </div>
                             </div>
-                            <textarea placeholder="Descrição do evento..." value={timelineForm.description} onChange={e => setTimelineForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-lg text-xs text-foreground placeholder:text-muted-foreground min-h-[50px]" />
-                            <div className="flex gap-2">
-                              <button onClick={() => addTimelineEvent(o.id)} disabled={addTimeline.isPending} className="px-3 py-1.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-lg disabled:opacity-60">Adicionar Evento</button>
-                              <button onClick={() => setShowTimelineForm(null)} className="px-3 py-1.5 bg-secondary text-secondary-foreground text-[10px] font-bold rounded-lg">Cancelar</button>
+                            <div className="space-y-1.5">
+                              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Descrição do Evento *</label>
+                              <textarea placeholder="Descreva o evento..." value={timelineForm.description} onChange={e => setTimelineForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground min-h-[70px] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                              <button onClick={() => addTimelineEvent(o.id)} disabled={addTimeline.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity">
+                                {addTimeline.isPending && <Loader2 size={12} className="animate-spin" />} Adicionar Evento
+                              </button>
+                              <button onClick={() => setShowTimelineForm(null)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
                             </div>
                           </div>
                         ) : (

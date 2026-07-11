@@ -24,6 +24,7 @@ Além dos itens de menu, também foi ocultado:
 | Elemento | Onde | Motivo |
 | -------- | ---- | ------ |
 | **Modal "Pendências Operacionais"** (exibido após o login) | `PendencyAlertModal` | Mostra pendências de Treinamentos/EPIs/Conformidade — todos de Segurança Operacional (Fase 2) |
+| **"Acessar demonstração"** + painel de acesso rápido (credenciais de demo) na tela de login | `LoginPage` | Removido a pedido do gestor para a entrega da Fase 1 |
 
 ## Como está sendo ocultado
 
@@ -79,6 +80,22 @@ Ocultação feita em [`src/app/layout/AppShell.tsx`](../src/app/layout/AppShell.
 O componente `PendencyAlertModal.tsx` **em si não foi alterado** — continua completo
 para a Fase 2.
 
+### "Acessar demonstração" na tela de login (pedido do gestor)
+
+A tela de login ([`src/modules/auth/pages/LoginPage.tsx`](../src/modules/auth/pages/LoginPage.tsx))
+tinha um botão **"Acessar demonstração"** que revelava um painel de **acesso rápido**
+com as credenciais de demonstração (Administrador, Estratégico, Tático, Operacional,
+Entidade). O gestor pediu para removê-lo na entrega da Fase 1.
+
+Ocultação feita no próprio `LoginPage.tsx` (tudo marcado com `[OCULTO FASE 1 ...]`):
+
+1. O **estado** `const [showDemo, setShowDemo] = useState(false);` foi comentado.
+2. A função de **login rápido** `quickLogin(...)` foi comentada.
+3. O **bloco JSX** do botão "Acessar demonstração" e do painel de acesso rápido foi
+   comentado (envolvido em `{/* ... */}`).
+
+O formulário de login normal (email + senha + "Entrar") **permanece intacto**.
+
 ## Como reverter (Fase 2)
 
 Para trazer os itens de volta, no arquivo
@@ -111,6 +128,14 @@ automaticamente.
 
 - o import `import { PendencyAlertModal } from './PendencyAlertModal';`
 - a linha `<PendencyAlertModal />` dentro do `return`.
+
+**Para reativar o "Acessar demonstração"**, em
+[`src/modules/auth/pages/LoginPage.tsx`](../src/modules/auth/pages/LoginPage.tsx)
+descomente os três trechos marcados com `[OCULTO FASE 1 ...]`:
+
+- o estado `const [showDemo, setShowDemo] = useState(false);`
+- a função `quickLogin(...)`
+- o bloco JSX do botão/painel de demonstração (remover o `{/*` e `*/}`).
 
 ## Bloqueio total (opcional)
 

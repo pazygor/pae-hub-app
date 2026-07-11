@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { SeverityLevel } from '@/lib/types';
 import { situationRoomPath } from '@/lib/nav-config';
 import { useTerminals, useOccurrenceMutations, occurrencesApi } from '@/api';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 /**
  * Provider do fluxo de "Disparar Emergência" (Funcional §4.1) — Fases 2+3:
@@ -146,26 +147,24 @@ export function EmergencyDispatchProvider() {
                 </div>
 
                 {user.role === 'admin' && visibleTerminals.length > 1 && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Terminal</label>
-                    <select
-                      value={form.terminalId}
-                      onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))}
-                      className="w-full px-3 py-2.5 bg-background border border-input rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                    >
-                      <option value="">Selecione o terminal...</option>
-                      {visibleTerminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminal</label>
+                    <Select value={form.terminalId} onValueChange={v => setForm(f => ({ ...f, terminalId: v }))}>
+                      <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
+                      <SelectContent className="z-[10000]">
+                        {visibleTerminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
                 )}
 
-                <div>
-                  <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Descrição da emergência *</label>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Descrição da emergência *</label>
                   <textarea
                     value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                     placeholder="Descreva brevemente a situação de emergência..."
-                    className="w-full px-3 py-2.5 bg-background border border-input rounded-lg text-sm text-foreground placeholder:text-muted-foreground min-h-[80px] focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground min-h-[80px] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background"
                     required
                   />
                 </div>

@@ -22,7 +22,8 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [showDemo, setShowDemo] = useState(false);
+  // [OCULTO FASE 1 — ver docs/ocultacao-menu-fase1.md] Acesso de demonstração (removido a pedido do gestor)
+  // const [showDemo, setShowDemo] = useState(false);
 
   useEffect(() => {
     document.title = 'Entrar · M1 PAE Hub';
@@ -55,9 +56,10 @@ export function LoginPage() {
     void doLogin(email, password);
   };
 
-  const quickLogin = (email: string, password: string) => {
-    void doLogin(email, password);
-  };
+  // [OCULTO FASE 1 — ver docs/ocultacao-menu-fase1.md] Login rápido do painel de demonstração
+  // const quickLogin = (email: string, password: string) => {
+  //   void doLogin(email, password);
+  // };
 
   return (
     <div className="min-h-svh flex items-center justify-center bg-foreground p-6">
@@ -108,6 +110,8 @@ export function LoginPage() {
           </button>
         </form>
 
+        {/* [OCULTO FASE 1 — ver docs/ocultacao-menu-fase1.md] "Acessar demonstração" e o
+            painel de acesso rápido (credenciais de demo) — removido a pedido do gestor.
         {!showDemo ? (
           <div className="text-center">
             <button
@@ -141,6 +145,7 @@ export function LoginPage() {
             </div>
           </div>
         )}
+        */}
       </div>
     </div>
   );
