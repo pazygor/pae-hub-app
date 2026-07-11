@@ -14,6 +14,7 @@ interface ApiUser {
   accessLevel: string | null;
   status?: string;
   terminalId: string | null;
+  entityId?: string | null;
   tacticalManagerId?: string | null;
   allowedModules?: string[];
   allowedTerminals?: string[];
@@ -29,7 +30,8 @@ function adapt(u: ApiUser): AppUser {
     email: u.email,
     password: '',
     role: u.role as UserRole,
-    linkId: u.terminalId ?? null,
+    // Entidade vincula via entityId; demais papéis via terminalId. linkId unifica os dois.
+    linkId: (u.role === 'entity' ? u.entityId : u.terminalId) ?? null,
     accessLevel: (u.accessLevel as AccessLevel | null) ?? undefined,
     tacticalManagerId: u.tacticalManagerId ?? undefined,
     phone: u.phone ?? undefined,
@@ -47,6 +49,7 @@ export interface UserInput {
   role?: string;
   accessLevel?: string | null;
   terminalId?: string;
+  entityId?: string;
   tacticalManagerId?: string | null;
   phone?: string;
   department?: string;

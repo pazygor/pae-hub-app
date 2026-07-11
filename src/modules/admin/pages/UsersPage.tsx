@@ -52,7 +52,10 @@ export function UsersPage() {
       name: form.name,
       role: form.role,
       accessLevel: form.accessLevel || null,
+      // Vínculo: terminal → terminalId; entidade → entityId (o back deriva a
+      // visibilidade da Permissão da entidade).
       terminalId: form.role === 'terminal' ? (form.linkId || undefined) : undefined,
+      entityId: form.role === 'entity' ? (form.linkId || undefined) : undefined,
       tacticalManagerId: form.tacticalManagerId || null,
       phone: form.phone || undefined,
     };

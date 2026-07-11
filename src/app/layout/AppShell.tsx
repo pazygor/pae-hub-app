@@ -9,6 +9,8 @@ import { GlobalSearch } from '@/components/common/GlobalSearch';
 import { PageLoader } from '@/components/common/PageLoader';
 import { AppSidebar } from './AppSidebar';
 import { MobileShell } from './MobileShell';
+import { NotificationBell } from './NotificationBell';
+import { OccurrenceAlertModal } from './OccurrenceAlertModal';
 import { PendencyAlertModal } from './PendencyAlertModal';
 import { useEmergencyDispatch } from './EmergencyDispatchProvider';
 import { useViewMode } from './ViewModeProvider';
@@ -63,6 +65,7 @@ export function AppShell() {
   return (
     <div className="flex h-svh bg-background overflow-hidden">
       <PendencyAlertModal />
+      <OccurrenceAlertModal />
 
       <GlobalSearch
         open={showSearch}
@@ -140,6 +143,7 @@ export function AppShell() {
               </button>
             )}
             
+            <NotificationBell />
             <span className="text-[10px] font-bold px-2.5 py-1 bg-primary/10 text-primary rounded-full uppercase tracking-wider">{roleLabel}</span>
             <span className="text-xs text-muted-foreground hidden sm:inline">{presentationMode ? maskEmail(user.email) : user.email}</span>
           </div>

@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/lib/auth-context';
 import { PresentationModeProvider } from '@/lib/presentation-mode';
 import { ViewModeProvider } from '@/app/layout/ViewModeProvider';
+import { NotificationsProvider } from '@/lib/notifications';
 import { RealtimeBridge } from '@/api/realtime';
 
 const queryClient = new QueryClient();
@@ -16,14 +17,16 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <RealtimeBridge />
-          <PresentationModeProvider>
-            <ViewModeProvider>
-              <Toaster />
-              <Sonner />
-              {children}
-            </ViewModeProvider>
-          </PresentationModeProvider>
+          <NotificationsProvider>
+            <RealtimeBridge />
+            <PresentationModeProvider>
+              <ViewModeProvider>
+                <Toaster />
+                <Sonner />
+                {children}
+              </ViewModeProvider>
+            </PresentationModeProvider>
+          </NotificationsProvider>
         </AuthProvider>
       </TooltipProvider>
     </QueryClientProvider>
