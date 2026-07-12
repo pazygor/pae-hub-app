@@ -7,8 +7,9 @@ import { canManage, isTerminalLocked } from '@/lib/access-control';
 import { isMenuItemAccessible, getDefaultModules, getDefaultSafetySubModules, ProductModule, SafetySubModule } from '@/lib/modules';
 import {
   CheckCircle2, XCircle, AlertTriangle, Filter, Search, AlertCircle, Plus, X, Trash2,
-  ClipboardCheck, ChevronDown, ChevronUp, Clock, UserCheck, FileText, Shield
+  ClipboardCheck, ChevronDown, ChevronUp, Clock, UserCheck, FileText, Shield, Loader2
 } from 'lucide-react';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 type SafetyStatus = 'operacional' | 'atencao' | 'nao_conforme';
 type ViewTab = 'integrated' | 'manual';
@@ -67,6 +68,7 @@ export function CompliancePage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<SafetyStatus | 'all'>('all');
   const [filterTerminal, setFilterTerminal] = useState<string>('all');
+  const activeFilterCount = [searchTerm, filterStatus !== 'all', filterTerminal !== 'all'].filter(Boolean).length;
   const effectiveTerminalFilter = terminalLocked && visibleTerminalIds.length === 1 ? visibleTerminalIds[0] : filterTerminal;
   const [activeTab, setActiveTab] = useState<ViewTab>(hasIntegration ? 'integrated' : 'manual');
   const [showForm, setShowForm] = useState(false);
@@ -137,7 +139,7 @@ export function CompliancePage() {
 
   // Actions
   const addItem = () => {
-    if (!form.name) return;
+    if (!form.name) { toast.error('Informe o nome do item'); return; }
     create.mutate(
       {
         name: form.name, responsible: form.responsible,
@@ -198,6 +200,89 @@ export function CompliancePage() {
         )}
       </div>
 
+      {/* Add Form */}
+      {showForm && (
+        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-foreground">Novo Item de Conformidade</h3>
+            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X size={16} /></button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Nome *</label>
+              <input placeholder="Descrição do item" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Responsável</label>
+              <input placeholder="Responsável" value={form.responsible} onChange={e => setForm(f => ({ ...f, responsible: e.target.value }))}
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Status</label>
+              <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v as ComplianceStatus }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="conforme" className="cursor-pointer">Conforme</SelectItem>
+                  <SelectItem value="atencao" className="cursor-pointer">Atenção</SelectItem>
+                  <SelectItem value="nao_conforme" className="cursor-pointer">Não Conforme</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminal</label>
+              <Select value={form.terminalId || 'none'} onValueChange={v => setForm(f => ({ ...f, terminalId: v === 'none' ? '' : v }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none" className="cursor-pointer">Nenhum</SelectItem>
+                  {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Área</label>
+              <input placeholder="Ex: Pátio, Berço 101..." value={form.area} onChange={e => setForm(f => ({ ...f, area: e.target.value }))}
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Data de Verificação</label>
+              <input type="date" value={form.verificationDate} onChange={e => setForm(f => ({ ...f, verificationDate: e.target.value }))}
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Validade <span className="text-muted-foreground/60 normal-case font-normal">(opcional)</span></label>
+              <input type="date" value={form.expiryDate} onChange={e => setForm(f => ({ ...f, expiryDate: e.target.value }))}
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Usuário <span className="text-muted-foreground/60 normal-case font-normal">(opcional)</span></label>
+              <Select value={form.userId || 'none'} onValueChange={v => setForm(f => ({ ...f, userId: v === 'none' ? '' : v }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none" className="cursor-pointer">Nenhum</SelectItem>
+                  {users.map(u => <SelectItem key={u.id} value={u.id} className="cursor-pointer">{u.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Observações</label>
+              <input placeholder="Notas..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={addItem} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity">
+              {create.isPending && <Loader2 size={12} className="animate-spin" />} Salvar Item
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
+          </div>
+        </div>
+      )}
+
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-card border rounded-xl p-4 text-center">
@@ -219,7 +304,7 @@ export function CompliancePage() {
       </div>
 
       {/* Filters + Tabs */}
-      <div className="bg-card border rounded-xl p-4">
+      <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Filter size={14} className="text-muted-foreground" />
@@ -236,100 +321,44 @@ export function CompliancePage() {
             </div>
           )}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="relative col-span-2 md:col-span-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input type="text" placeholder="Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs bg-secondary/50 border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Busca</label>
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input type="text" placeholder="Buscar..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-background border border-input rounded-md text-xs text-foreground placeholder:text-muted-foreground h-9 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
           </div>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)}
-            className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-            <option value="all">Todos os status</option>
-            <option value="operacional">Conforme</option>
-            <option value="atencao">Atenção</option>
-            <option value="nao_conforme">Não Conforme</option>
-          </select>
-          {!terminalLocked && (activeTab === 'integrated' || activeTab === 'manual') && (
-            <select value={filterTerminal} onChange={e => setFilterTerminal(e.target.value)}
-              className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-              <option value="all">Todos os terminais</option>
-              {terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
+          <div>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Status</label>
+            <Select value={filterStatus} onValueChange={v => setFilterStatus(v as SafetyStatus | 'all')}>
+              <SelectTrigger className="cursor-pointer text-xs h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="cursor-pointer">Todos os status</SelectItem>
+                <SelectItem value="operacional" className="cursor-pointer">Conforme</SelectItem>
+                <SelectItem value="atencao" className="cursor-pointer">Atenção</SelectItem>
+                <SelectItem value="nao_conforme" className="cursor-pointer">Não Conforme</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {!terminalLocked && (
+            <div>
+              <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Terminal</label>
+              <Select value={filterTerminal} onValueChange={setFilterTerminal}>
+                <SelectTrigger className="cursor-pointer text-xs h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="cursor-pointer">Todos os terminais</SelectItem>
+                  {terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           )}
         </div>
+        {activeFilterCount > 0 && (
+          <button onClick={() => { setSearchTerm(''); setFilterStatus('all'); setFilterTerminal('all'); }} className="mt-3 text-xs font-bold text-primary hover:text-primary/80 transition-colors">Limpar filtros</button>
+        )}
       </div>
-
-      {/* Add Form */}
-      {showForm && (
-        <div className="bg-card border border-primary/20 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-foreground">Novo Item de Conformidade</h3>
-            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground"><X size={16} /></button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Nome</label>
-              <input placeholder="Descrição do item" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Responsável</label>
-              <input placeholder="Responsável" value={form.responsible} onChange={e => setForm(f => ({ ...f, responsible: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Status</label>
-              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as ComplianceStatus }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground">
-                <option value="conforme">Conforme</option>
-                <option value="atencao">Atenção</option>
-                <option value="nao_conforme">Não Conforme</option>
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Terminal</label>
-              <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground">
-                <option value="">Nenhum</option>
-                {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Área</label>
-              <input placeholder="Ex: Pátio, Berço 101..." value={form.area} onChange={e => setForm(f => ({ ...f, area: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Data de Verificação</label>
-              <input type="date" value={form.verificationDate} onChange={e => setForm(f => ({ ...f, verificationDate: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Validade (opcional)</label>
-              <input type="date" value={form.expiryDate} onChange={e => setForm(f => ({ ...f, expiryDate: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Usuário (opcional)</label>
-              <select value={form.userId} onChange={e => setForm(f => ({ ...f, userId: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground">
-                <option value="">Nenhum</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Observações</label>
-              <input placeholder="Notas..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
-            </div>
-          </div>
-          <button onClick={addItem} className="px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110">Salvar Item</button>
-        </div>
-      )}
 
       {/* ===== INTEGRATED VIEW ===== */}
       {activeTab === 'integrated' && hasIntegration && (

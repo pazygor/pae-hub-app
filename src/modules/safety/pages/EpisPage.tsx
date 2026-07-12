@@ -7,9 +7,10 @@ import { canManage, canViewManagement, getVisibleTerminalIds, isTerminalLocked }
 import {
   HardHat, Plus, Trash2, AlertTriangle, Clock, X, Users, Package, Filter, Search,
   ChevronDown, ChevronUp, CalendarDays, UserCheck, MessageSquare, History, Shield,
-  RotateCcw, CheckSquare, ArrowRightLeft, RefreshCw, UserX, UserPlus, CheckCircle, CheckSquare2
+  RotateCcw, CheckSquare, ArrowRightLeft, RefreshCw, UserX, UserPlus, CheckCircle, CheckSquare2, Loader2
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { AssignUsersModal } from '../components/AssignUsersModal';
 
 const COLORS = {
@@ -133,6 +134,7 @@ export function EpisPage() {
   const [filterType, setFilterType] = useState<'all' | EPIType>('all');
   const [filterUsage, setFilterUsage] = useState<'all' | EPIUsageStatus>('all');
   const [searchUser, setSearchUser] = useState('');
+  const activeFilterCount = [searchUser, filterStatus !== 'all', filterType !== 'all', filterUsage !== 'all', filterTerminal !== 'all'].filter(Boolean).length;
 
   // Active assignments — scoped to visible terminals
   const classified = useMemo(() => {
@@ -342,6 +344,60 @@ export function EpisPage() {
         )}
       </div>
 
+      {/* Add EPI Form */}
+      {showForm && (
+        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-foreground">Cadastrar Novo EPI</h3>
+            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X size={16} /></button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Nome *</label>
+              <input placeholder="Nome do EPI" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Tipo</label>
+              <Select value={form.epiType} onValueChange={v => setForm(f => ({ ...f, epiType: v as EPIType }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {EPI_TYPES.map(([key, label]) => <SelectItem key={key} value={key} className="cursor-pointer">{label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminal</label>
+              <Select value={form.terminalId || 'global'} onValueChange={v => setForm(f => ({ ...f, terminalId: v === 'global' ? '' : v }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global" className="cursor-pointer">Global (todos os terminais)</SelectItem>
+                  {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Data de Validade</label>
+              <input type="date" value={form.expiryDate} onChange={e => setForm(f => ({ ...f, expiryDate: e.target.value }))}
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Descrição</label>
+            <textarea placeholder="Descrição do EPI..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground min-h-[70px] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+          </div>
+          <p className="text-[10px] text-muted-foreground">Após salvar, use o botão <strong>"Entregar EPI"</strong> para distribuir a usuários específicos.</p>
+          {formError && <p className="text-xs text-primary font-bold">{formError}</p>}
+          <div className="flex gap-2 pt-1">
+            <button onClick={addEPI} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity">
+              {create.isPending && <Loader2 size={12} className="animate-spin" />} Salvar EPI
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
+          </div>
+        </div>
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <div className="bg-card border rounded-xl p-3 text-center">
@@ -402,7 +458,7 @@ export function EpisPage() {
       )}
 
       {/* Filters */}
-      <div className="bg-card border rounded-xl p-4">
+      <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Filter size={14} className="text-muted-foreground" />
@@ -417,126 +473,114 @@ export function EpisPage() {
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-          <div className="relative col-span-2 md:col-span-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input type="text" placeholder="Buscar usuário..." value={searchUser} onChange={e => setSearchUser(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs bg-secondary/50 border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Usuário</label>
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input type="text" placeholder="Buscar usuário..." value={searchUser} onChange={e => setSearchUser(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-background border border-input rounded-md text-xs text-foreground placeholder:text-muted-foreground h-9 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
           </div>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)}
-            className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-            <option value="all">Todos os status</option>
-            <option value="valid">Válido</option>
-            <option value="soon">Atenção</option>
-            <option value="expired">Vencido</option>
-          </select>
-          <select value={filterUsage} onChange={e => setFilterUsage(e.target.value as any)}
-            className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-            <option value="all">Todos os usos</option>
-            <option value="em_uso">Em Uso</option>
-            <option value="vencido">Vencido</option>
-            <option value="substituido">Substituído</option>
-            <option value="devolvido">Devolvido</option>
-          </select>
-          <select value={filterType} onChange={e => setFilterType(e.target.value as any)}
-            className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-            <option value="all">Todos os tipos</option>
-            {EPI_TYPES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-          </select>
+          <div>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Status</label>
+            <Select value={filterStatus} onValueChange={v => setFilterStatus(v as 'all' | EPIStatus)}>
+              <SelectTrigger className="cursor-pointer text-xs h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="cursor-pointer">Todos os status</SelectItem>
+                <SelectItem value="valid" className="cursor-pointer">Válido</SelectItem>
+                <SelectItem value="soon" className="cursor-pointer">Atenção</SelectItem>
+                <SelectItem value="expired" className="cursor-pointer">Vencido</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Uso</label>
+            <Select value={filterUsage} onValueChange={v => setFilterUsage(v as 'all' | EPIUsageStatus)}>
+              <SelectTrigger className="cursor-pointer text-xs h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="cursor-pointer">Todos os usos</SelectItem>
+                <SelectItem value="em_uso" className="cursor-pointer">Em Uso</SelectItem>
+                <SelectItem value="vencido" className="cursor-pointer">Vencido</SelectItem>
+                <SelectItem value="substituido" className="cursor-pointer">Substituído</SelectItem>
+                <SelectItem value="devolvido" className="cursor-pointer">Devolvido</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Tipo</label>
+            <Select value={filterType} onValueChange={v => setFilterType(v as 'all' | EPIType)}>
+              <SelectTrigger className="cursor-pointer text-xs h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="cursor-pointer">Todos os tipos</SelectItem>
+                {EPI_TYPES.map(([key, label]) => <SelectItem key={key} value={key} className="cursor-pointer">{label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
           {!terminalLocked && (
-            <select value={filterTerminal} onChange={e => setFilterTerminal(e.target.value)}
-              className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-              <option value="all">Todos os terminais</option>
-              {terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
+            <div>
+              <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Terminal</label>
+              <Select value={filterTerminal} onValueChange={setFilterTerminal}>
+                <SelectTrigger className="cursor-pointer text-xs h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="cursor-pointer">Todos os terminais</SelectItem>
+                  {terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           )}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS.valid }} /> {validCount}</span>
             <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS.soon }} /> {soonCount}</span>
             <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS.expired }} /> {expiredCount}</span>
           </div>
+          {activeFilterCount > 0 && (
+            <button onClick={() => { setSearchUser(''); setFilterStatus('all'); setFilterUsage('all'); setFilterType('all'); setFilterTerminal('all'); }} className="text-xs font-bold text-primary hover:text-primary/80 transition-colors">Limpar filtros</button>
+          )}
         </div>
       </div>
 
-      {/* Add EPI Form */}
-      {showForm && (
-        <div className="bg-card border border-primary/20 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-foreground">Cadastrar Novo EPI</h3>
-            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground"><X size={16} /></button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Nome</label>
-              <input placeholder="Nome do EPI" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Tipo</label>
-              <select value={form.epiType} onChange={e => setForm(f => ({ ...f, epiType: e.target.value as EPIType }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground">
-                {EPI_TYPES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Terminal</label>
-              <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground">
-                <option value="">Selecione o terminal...</option>
-                {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Data de Validade</label>
-              <input type="date" value={form.expiryDate} onChange={e => setForm(f => ({ ...f, expiryDate: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
-            </div>
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Descrição</label>
-            <textarea placeholder="Descrição do EPI" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground" rows={2} />
-          </div>
-          <p className="text-[10px] text-muted-foreground">Após salvar, use o botão <strong>"Entregar EPI"</strong> para distribuir a usuários específicos.</p>
-          {formError && <p className="text-xs text-primary font-bold">{formError}</p>}
-          <button onClick={addEPI} className="px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110">Salvar EPI</button>
-        </div>
-      )}
-
       {/* Replace EPI Modal */}
       {replaceForm && (
-        <div className="bg-card border border-accent rounded-xl p-5 space-y-4">
+        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <RefreshCw size={16} className="text-accent-foreground" />
               <h3 className="text-sm font-bold text-foreground">Substituir EPI</h3>
             </div>
-            <button onClick={() => setReplaceForm(null)} className="text-muted-foreground hover:text-foreground"><X size={16} /></button>
+            <button onClick={() => setReplaceForm(null)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X size={16} /></button>
           </div>
           <p className="text-xs text-muted-foreground">O EPI atual será marcado como substituído e um novo registro será criado.</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Nova Data Entrega</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Nova Data Entrega *</label>
               <input type="date" value={replaceData.deliveryDate} onChange={e => setReplaceData(f => ({ ...f, deliveryDate: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
             </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Nova Validade</label>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Nova Validade</label>
               <input type="date" value={replaceData.expiryDate} onChange={e => setReplaceData(f => ({ ...f, expiryDate: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
             </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Responsável</label>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Responsável</label>
               <input placeholder="Quem entregou" value={replaceData.responsible} onChange={e => setReplaceData(f => ({ ...f, responsible: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
             </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Observações</label>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Observações</label>
               <input placeholder="Motivo da troca..." value={replaceData.observations} onChange={e => setReplaceData(f => ({ ...f, observations: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
             </div>
           </div>
-          <button onClick={replaceEPI} className="px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110">Confirmar Substituição</button>
+          <div className="flex gap-2 pt-1">
+            <button onClick={replaceEPI} disabled={updateDelivery.isPending || deliver.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity">
+              {(updateDelivery.isPending || deliver.isPending) && <Loader2 size={12} className="animate-spin" />} Confirmar Substituição
+            </button>
+            <button onClick={() => setReplaceForm(null)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
+          </div>
         </div>
       )}
 

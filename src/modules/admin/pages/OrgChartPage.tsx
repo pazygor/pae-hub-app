@@ -7,6 +7,7 @@ import {
   Network, User, ChevronDown, ChevronUp, Filter, AlertTriangle,
   GraduationCap, HardHat, ClipboardCheck, X, LinkIcon, Shield
 } from 'lucide-react';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 const LEVEL_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; ring: string }> = {
   'estratégico': { label: 'Estratégico', color: 'text-primary', bg: 'bg-primary/10', border: 'border-primary/30', ring: 'ring-primary/20' },
@@ -302,19 +303,26 @@ export function OrgChartPage() {
 
       {/* Filter — only show for admin */}
       {!terminalLocked && (
-        <div className="bg-card border rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="bg-card border border-border rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
             <Filter size={14} className="text-muted-foreground" />
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Filtro</span>
           </div>
-          <select
-            value={filterTerminal}
-            onChange={e => setFilterTerminal(e.target.value)}
-            className="w-full md:w-64 px-3 py-2 text-xs bg-secondary/50 border rounded-lg text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            <option value="all">Todos os terminais</option>
-            {terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Terminal</label>
+              <Select value={filterTerminal} onValueChange={setFilterTerminal}>
+                <SelectTrigger className="cursor-pointer text-xs h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="cursor-pointer">Todos os terminais</SelectItem>
+                  {terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {filterTerminal !== 'all' && (
+            <button onClick={() => setFilterTerminal('all')} className="mt-3 text-xs font-bold text-primary hover:text-primary/80 transition-colors">Limpar filtros</button>
+          )}
         </div>
       )}
 

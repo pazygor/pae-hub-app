@@ -6,9 +6,10 @@ import { useTrainings, useTrainingAssignments, useTrainingMutations, useUsers, u
 import {
   GraduationCap, Plus, Trash2, CheckCircle, AlertTriangle, Clock, X, Users, UserPlus,
   Filter, Search, ChevronDown, ChevronUp, CalendarDays, Shield, FileText, Award,
-  Video, Upload, ExternalLink, Paperclip, CheckSquare2
+  Video, Upload, ExternalLink, Paperclip, CheckSquare2, Loader2
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { AssignUsersModal } from '../components/AssignUsersModal';
 
 const COLORS = {
@@ -84,6 +85,7 @@ export function TrainingsPage() {
   const [filterStatus, setFilterStatus] = useState<'all' | TrainingStatus>('all');
   const [filterMandatory, setFilterMandatory] = useState<'all' | 'yes' | 'no'>('all');
   const [searchUser, setSearchUser] = useState('');
+  const activeFilterCount = [searchUser, filterStatus !== 'all', filterMandatory !== 'all', filterTerminal !== 'all'].filter(Boolean).length;
 
   // Classified — scoped to visible terminals
   const classified = useMemo(() => {
@@ -303,6 +305,73 @@ export function TrainingsPage() {
         )}
       </div>
 
+      {/* Add Training Form */}
+      {showForm && (
+        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-foreground">Cadastrar Novo Treinamento</h3>
+            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X size={16} /></button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Nome *</label>
+              <input placeholder="Nome do treinamento" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminal</label>
+              <Select value={form.terminalId || 'global'} onValueChange={v => setForm(f => ({ ...f, terminalId: v === 'global' ? '' : v }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global" className="cursor-pointer">Global (todos os terminais)</SelectItem>
+                  {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer h-10 px-3">
+                <input type="checkbox" checked={form.mandatory} onChange={e => setForm(f => ({ ...f, mandatory: e.target.checked }))} className="rounded border-input" />
+                Obrigatório
+              </label>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Descrição</label>
+            <textarea placeholder="Descrição do treinamento..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground min-h-[70px] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                <Paperclip size={10} className="inline mr-1" />Material <span className="text-muted-foreground/60 normal-case font-normal">(PDF, PPT)</span>
+              </label>
+              <div className="flex gap-2">
+                <input placeholder="Nome do arquivo (ex: manual.pdf)" value={form.materialFileName} onChange={e => setForm(f => ({ ...f, materialFileName: e.target.value }))}
+                  className="flex-1 h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+                <button type="button" className="h-10 px-3 bg-secondary text-secondary-foreground text-xs font-bold rounded-md hover:bg-secondary/80 flex items-center gap-1 cursor-pointer transition-colors">
+                  <Upload size={12} /> Upload
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                <Video size={10} className="inline mr-1" />Link de Vídeo
+              </label>
+              <input placeholder="https://youtube.com/..." value={form.videoUrl} onChange={e => setForm(f => ({ ...f, videoUrl: e.target.value }))}
+                className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
+          </div>
+          <p className="text-[10px] text-muted-foreground">Após salvar, use o botão <strong>"Atribuir a Usuários"</strong> para delegar a usuários específicos.</p>
+          {formError && <p className="text-xs text-primary font-bold">{formError}</p>}
+          <div className="flex gap-2 pt-1">
+            <button onClick={addTraining} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity">
+              {create.isPending && <Loader2 size={12} className="animate-spin" />} Salvar Treinamento
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
+          </div>
+        </div>
+      )}
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <div className="bg-card border rounded-xl p-3 text-center">
@@ -364,7 +433,7 @@ export function TrainingsPage() {
       )}
 
       {/* Filters */}
-      <div className="bg-card border rounded-xl p-4">
+      <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Filter size={14} className="text-muted-foreground" />
@@ -379,99 +448,62 @@ export function TrainingsPage() {
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div className="relative col-span-2 md:col-span-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input type="text" placeholder="Buscar usuário..." value={searchUser} onChange={e => setSearchUser(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs bg-secondary/50 border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Usuário</label>
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input type="text" placeholder="Buscar usuário..." value={searchUser} onChange={e => setSearchUser(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-background border border-input rounded-md text-xs text-foreground placeholder:text-muted-foreground h-9 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
+            </div>
           </div>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)}
-            className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-            <option value="all">Todos os status</option>
-            <option value="valid">Em dia</option>
-            <option value="soon">Atenção</option>
-            <option value="expired">Vencido</option>
-          </select>
-          <select value={filterMandatory} onChange={e => setFilterMandatory(e.target.value as any)}
-            className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-            <option value="all">Todos os tipos</option>
-            <option value="yes">Obrigatórios</option>
-            <option value="no">Opcionais</option>
-          </select>
+          <div>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Status</label>
+            <Select value={filterStatus} onValueChange={v => setFilterStatus(v as 'all' | TrainingStatus)}>
+              <SelectTrigger className="cursor-pointer text-xs h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="cursor-pointer">Todos os status</SelectItem>
+                <SelectItem value="valid" className="cursor-pointer">Em dia</SelectItem>
+                <SelectItem value="soon" className="cursor-pointer">Atenção</SelectItem>
+                <SelectItem value="expired" className="cursor-pointer">Vencido</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Tipo</label>
+            <Select value={filterMandatory} onValueChange={v => setFilterMandatory(v as 'all' | 'yes' | 'no')}>
+              <SelectTrigger className="cursor-pointer text-xs h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="cursor-pointer">Todos os tipos</SelectItem>
+                <SelectItem value="yes" className="cursor-pointer">Obrigatórios</SelectItem>
+                <SelectItem value="no" className="cursor-pointer">Opcionais</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           {!terminalLocked && (
-            <select value={filterTerminal} onChange={e => setFilterTerminal(e.target.value)}
-              className="text-xs bg-secondary/50 border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-              <option value="all">Todos os terminais</option>
-              {terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
+            <div>
+              <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Terminal</label>
+              <Select value={filterTerminal} onValueChange={setFilterTerminal}>
+                <SelectTrigger className="cursor-pointer text-xs h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="cursor-pointer">Todos os terminais</SelectItem>
+                  {terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           )}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS.valid }} /> {validCount}</span>
             <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS.soon }} /> {soonCount}</span>
             <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS.expired }} /> {expiredCount}</span>
           </div>
+          {activeFilterCount > 0 && (
+            <button onClick={() => { setSearchUser(''); setFilterStatus('all'); setFilterMandatory('all'); setFilterTerminal('all'); }} className="text-xs font-bold text-primary hover:text-primary/80 transition-colors">Limpar filtros</button>
+          )}
         </div>
       </div>
-
-      {/* Add Training Form */}
-      {showForm && (
-        <div className="bg-card border border-primary/20 rounded-xl p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-foreground">Cadastrar Novo Treinamento</h3>
-            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground"><X size={16} /></button>
-          </div>
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Nome</label>
-              <input placeholder="Nome do treinamento" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Terminal</label>
-              <select value={form.terminalId} onChange={e => setForm(f => ({ ...f, terminalId: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground">
-                <option value="">Selecione o terminal...</option>
-                {terminals.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-            <div className="flex items-end">
-              <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer h-10 px-3">
-                <input type="checkbox" checked={form.mandatory} onChange={e => setForm(f => ({ ...f, mandatory: e.target.checked }))} className="rounded border-input" />
-                Obrigatório
-              </label>
-            </div>
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">Descrição</label>
-            <textarea placeholder="Descrição do treinamento" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              className="w-full px-3 py-2 bg-background border border-input rounded-lg text-sm text-foreground" rows={2} />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">
-                <Paperclip size={10} className="inline mr-1" />Material (PDF, PPT)
-              </label>
-              <div className="flex gap-2">
-                <input placeholder="Nome do arquivo (ex: manual.pdf)" value={form.materialFileName} onChange={e => setForm(f => ({ ...f, materialFileName: e.target.value }))}
-                  className="flex-1 h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
-                <button type="button" className="h-10 px-3 bg-secondary text-muted-foreground text-xs font-bold rounded-lg hover:bg-secondary/80 flex items-center gap-1">
-                  <Upload size={12} /> Upload
-                </button>
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] font-bold text-muted-foreground uppercase block mb-1">
-                <Video size={10} className="inline mr-1" />Link de Vídeo
-              </label>
-              <input placeholder="https://youtube.com/..." value={form.videoUrl} onChange={e => setForm(f => ({ ...f, videoUrl: e.target.value }))}
-                className="w-full h-10 px-3 bg-background border border-input rounded-lg text-sm text-foreground" />
-            </div>
-          </div>
-          <p className="text-[10px] text-muted-foreground">Após salvar, use o botão <strong>"Atribuir a Usuários"</strong> para delegar a usuários específicos.</p>
-          {formError && <p className="text-xs text-primary font-bold">{formError}</p>}
-          <button onClick={addTraining} className="px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110">Salvar Treinamento</button>
-        </div>
-      )}
 
       {/* ===== USER VIEW ===== */}
       {viewMode === 'user' && (
