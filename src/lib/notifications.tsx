@@ -28,6 +28,8 @@ export interface OccurrenceAlert {
   terminalName?: string | null;
   level?: NotifLevel | null;
   mandatory?: boolean;
+  /** Alertas perdidos (login): quantas OUTRAS ocorrências não vistas além desta. */
+  extraCount?: number;
 }
 
 interface NotificationsCtx {

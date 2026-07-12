@@ -66,6 +66,8 @@ export interface AppUser {
   accessLevel?: AccessLevel;
   tacticalManagerId?: string;
   phone?: string;
+  /** Último "visto" dos alertas de ocorrência (re-hidratação no login). */
+  alertsSeenAt?: string | null;
   allowedModules?: string[];
   allowedTerminals?: string[];
   allowedOccurrenceTypes?: string[];

@@ -24,6 +24,7 @@ export function adaptAuthUser(api: ApiAuthUser): AppUser {
     accessLevel: (api.accessLevel as AccessLevel | null) ?? undefined,
     linkId: api.linkId ?? null,
     tacticalManagerId: api.tacticalManagerId ?? undefined,
+    alertsSeenAt: api.alertsSeenAt ?? null,
     // Autorização fina (Níveis de Acesso) — agora da API, não mais do mock
     allowedModules: api.allowedModules,
     allowedTerminals: api.allowedTerminals,

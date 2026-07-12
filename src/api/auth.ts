@@ -20,6 +20,7 @@ export interface ApiAuthUser {
   organizationId: string;
   organizationName?: string;
   avatarUrl: string | null;
+  alertsSeenAt?: string | null;
   allowedModules?: string[];
   allowedTerminals?: string[];
   allowedOccurrenceTypes?: string[];
@@ -43,6 +44,9 @@ export const authApi = {
 
   /** Retorna o perfil do usuário do token atual (usado para reidratar a sessão). */
   me: () => http.get<ApiAuthUser>('/auth/me'),
+
+  /** Marca os alertas de ocorrência como vistos — o próximo login só re-alerta o que vier depois. */
+  markAlertsSeen: () => http.post<{ alertsSeenAt: string }>('/auth/alerts-seen', {}),
 
   /** Revoga o refresh token no back e limpa os tokens locais. */
   logout: async (): Promise<void> => {

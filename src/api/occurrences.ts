@@ -25,6 +25,7 @@ export interface ApiOccurrence extends Occurrence {
   terminalName?: string;
   location?: string;
   resolvedAt?: string;
+  reportedByUserId?: string;
 }
 
 export interface OccurrenceDetail extends ApiOccurrence {

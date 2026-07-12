@@ -8,6 +8,7 @@ import { PresentationModeProvider } from '@/lib/presentation-mode';
 import { ViewModeProvider } from '@/app/layout/ViewModeProvider';
 import { NotificationsProvider } from '@/lib/notifications';
 import { RealtimeBridge } from '@/api/realtime';
+import { MissedAlertsBridge } from '@/api/missed-alerts';
 
 const queryClient = new QueryClient();
 
@@ -19,6 +20,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
         <AuthProvider>
           <NotificationsProvider>
             <RealtimeBridge />
+            <MissedAlertsBridge />
             <PresentationModeProvider>
               <ViewModeProvider>
                 <Toaster />

@@ -1,14 +1,15 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Siren, X, MapPin, ArrowRight } from 'lucide-react';
+import { Siren, X, MapPin, ArrowRight, Bell } from 'lucide-react';
 import { useNotifications, severityClasses } from '@/lib/notifications';
 import { startRingtone, stopRingtone } from '@/lib/ringtone';
+import { authApi } from '@/api';
 
 /**
  * Modal de alerta de NOVA OCORRÊNCIA (som + destaque) — chama atenção imediata,
  * no mesmo espírito do modal de pendências. Cor pelo grau de severidade.
- * Disparado pelo RealtimeBridge (que também toca o som).
+ * Disparado pelo RealtimeBridge (tempo real) e pelo MissedAlertsBridge (login).
  */
 export function OccurrenceAlertModal() {
   const { alert, dismissAlert } = useNotifications();
@@ -21,7 +22,10 @@ export function OccurrenceAlertModal() {
   }, [alert]);
 
   const c = severityClasses(alert?.level);
-  const goToOccurrence = () => { dismissAlert(); navigate('/ocorrencias'); };
+  // Fechar o alerta = "vi" — grava o alertsSeenAt no back para o próximo login
+  // só re-alertar o que vier depois (fire-and-forget; falha não bloqueia a UI).
+  const closeAlert = () => { authApi.markAlertsSeen().catch(() => {}); dismissAlert(); };
+  const goToOccurrence = () => { closeAlert(); navigate('/ocorrencias'); };
 
   return (
     <AnimatePresence>
@@ -31,7 +35,7 @@ export function OccurrenceAlertModal() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          onClick={dismissAlert}
+          onClick={closeAlert}
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -50,7 +54,7 @@ export function OccurrenceAlertModal() {
                 <h3 className={`text-sm font-black uppercase tracking-wide ${c.text}`}>Nova Ocorrência</h3>
                 <p className="text-[11px] text-muted-foreground">Requer atenção imediata</p>
               </div>
-              <button onClick={dismissAlert} className="ml-auto p-1.5 rounded-lg hover:bg-secondary transition-colors">
+              <button onClick={closeAlert} className="ml-auto p-1.5 rounded-lg hover:bg-secondary transition-colors">
                 <X size={16} className="text-muted-foreground" />
               </button>
             </div>
@@ -82,6 +86,17 @@ export function OccurrenceAlertModal() {
                   {alert.description}
                 </p>
               )}
+
+              {/* Alertas perdidos (login): além desta, há outras não vistas no sino */}
+              {(alert.extraCount ?? 0) > 0 && (
+                <div className={`flex items-center gap-2 text-xs font-bold ${c.text} ${c.bg} rounded-lg px-3 py-2`}>
+                  <Bell size={14} className="shrink-0" />
+                  <span>
+                    + {alert.extraCount} outra{alert.extraCount! > 1 ? 's' : ''} ocorrência{alert.extraCount! > 1 ? 's' : ''} enquanto
+                    você esteve fora — confira no sino de notificações.
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Ações */}
@@ -93,7 +108,7 @@ export function OccurrenceAlertModal() {
                 Ver ocorrência <ArrowRight size={14} />
               </button>
               <button
-                onClick={dismissAlert}
+                onClick={closeAlert}
                 className="px-4 py-2.5 bg-secondary text-muted-foreground rounded-xl text-xs font-bold hover:bg-secondary/80 transition-colors"
               >
                 Fechar
