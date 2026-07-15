@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { TimelineEventType } from '@/lib/types';
 import { generateIncidentPDF } from '../components/generateIncidentPDF';
 import { OccurrenceChat } from '../components/OccurrenceChat';
+import { PlanActivationModal } from '../components/PlanActivationModal';
 import {
   ShieldAlert, Clock, AlertTriangle, User, CheckCircle, Circle,
   Play, RefreshCw, Bell, Paperclip, FileText, MapPin, Siren,
@@ -100,18 +101,25 @@ export function SituationRoomPage() {
   const { data: plans = [] } = usePlans();
   const { data: documents = [] } = useDocuments();
   const { data: mapElements = [] } = useMapElements();
-  const { setStatus, addTimeline, toggleChecklistItem } = useOccurrenceMutations();
+  const { setStatus, addTimeline, toggleChecklistItem, activatePlan } = useOccurrenceMutations();
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const [showTimelineForm, setShowTimelineForm] = useState(false);
+  const [showPlanModal, setShowPlanModal] = useState(false);
   const [timelineForm, setTimelineForm] = useState<{ type: TimelineEventType; description: string; attachment: string }>({
     type: 'ação executada', description: '', attachment: '',
   });
 
   const terminal = occurrence ? terminals.find(t => t.id === occurrence.terminalId) : undefined;
-  const terminalPlans = occurrence ? plans.filter(p => p.terminalId === occurrence.terminalId) : [];
-  const activePlan = terminalPlans.find(p => p.status === 'ativo');
-  const hasPlanActivated = occurrence?.timeline.some(e => e.type === 'plano de emergência ativado') ?? false;
+  // Planos ATIVOS do terminal (Fase 10: o usuário escolhe qual ativar, não mais fixo).
+  const terminalActivePlans = occurrence ? plans.filter(p => p.terminalId === occurrence.terminalId && p.status === 'ativo') : [];
+  // Plano ativo derivado da timeline (imutável), independente do status da ocorrência.
+  const planEvents = (occurrence?.timeline ?? []).filter(e => e.type === 'plano de emergência ativado');
+  const lastPlanEvent = planEvents[planEvents.length - 1];
+  const hasPlanActivated = !!lastPlanEvent;
+  const activePlanName = lastPlanEvent
+    ? (plans.find(p => lastPlanEvent.description.startsWith(p.name))?.name ?? lastPlanEvent.description.split(' ativado —')[0])
+    : '';
   const terminalRisks = occurrence ? risks.filter(r => r.terminalId === occurrence.terminalId) : [];
   const terminalDocs = occurrence ? documents.filter(d => d.terminalId === occurrence.terminalId) : [];
   const terminalElements = useMemo(
@@ -165,7 +173,12 @@ export function SituationRoomPage() {
     });
 
     mapInstanceRef.current = map;
-    return () => { map.remove(); mapInstanceRef.current = null; };
+    // Leaflet às vezes inicializa antes de o container ter o tamanho final (dentro
+    // do grid/card), renderizando só um pedaço dos tiles. Recalcula o tamanho após
+    // o layout assentar para carregar todos os tiles.
+    const t1 = setTimeout(() => map.invalidateSize(), 0);
+    const t2 = setTimeout(() => map.invalidateSize(), 300);
+    return () => { clearTimeout(t1); clearTimeout(t2); map.remove(); mapInstanceRef.current = null; };
   }, [terminal, terminalElements, occurrence?.type]);
 
   // Carregando da API (deep-link/F5): loader antes de decidir redirect.
@@ -191,11 +204,14 @@ export function SituationRoomPage() {
   const formatTime = (dt: string) => new Date(dt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   // Actions
-  const activateEmergencyPlan = () => {
-    if (!activePlan || !occurrenceId) return;
-    addTimeline.mutate(
-      { id: occurrenceId, input: { type: 'plano de emergência ativado', description: `${activePlan.name} ativado — resposta de emergência iniciada` } },
-      { onSuccess: () => setStatus.mutate({ id: occurrenceId, status: 'emergência ativa' }, { onError }), onError },
+  const handleActivatePlan = (planId: string) => {
+    if (!occurrenceId) return;
+    activatePlan.mutate(
+      { id: occurrenceId, planId },
+      {
+        onSuccess: () => { setShowPlanModal(false); toast.success('Plano ativado — checklist aplicado à ocorrência'); },
+        onError,
+      },
     );
   };
 
@@ -261,9 +277,9 @@ export function SituationRoomPage() {
           {/* Quick Actions */}
           {canAct && (
             <div className="flex items-center gap-2 flex-wrap shrink-0">
-              {!hasPlanActivated && activePlan && (
-                <button onClick={activateEmergencyPlan} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:opacity-90 transition-opacity">
-                  <ShieldAlert size={14} /> Ativar Plano
+              {occurrence.status !== 'resolvido' && terminalActivePlans.length > 0 && (
+                <button onClick={() => setShowPlanModal(true)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg cursor-pointer hover:opacity-90 transition-opacity">
+                  <ShieldAlert size={14} /> {hasPlanActivated ? 'Trocar Plano' : 'Ativar Plano'}
                 </button>
               )}
               <button onClick={() => setShowTimelineForm(true)} className="flex items-center gap-1.5 px-3 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg hover:bg-secondary/80 transition-colors">
@@ -289,6 +305,9 @@ export function SituationRoomPage() {
           <p className={`text-sm font-bold ${hasPlanActivated ? 'text-success' : 'text-muted-foreground'}`}>
             {hasPlanActivated ? 'Ativado' : 'Pendente'}
           </p>
+          {hasPlanActivated && activePlanName && (
+            <p className="text-[10px] text-muted-foreground truncate mt-0.5" title={activePlanName}>{activePlanName}</p>
+          )}
         </div>
         <div className="bg-card border border-border rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Eventos</p>
@@ -304,7 +323,9 @@ export function SituationRoomPage() {
         </div>
         <div className="bg-card border border-border rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Checklist</p>
-          <p className="text-sm font-bold text-foreground">{completedCount}/{checklist.length}</p>
+          <p className={`text-sm font-bold ${hasPlanActivated ? 'text-foreground' : 'text-muted-foreground'}`}>
+            {hasPlanActivated ? `${completedCount}/${checklist.length}` : '—'}
+          </p>
         </div>
       </div>
 
@@ -330,48 +351,73 @@ export function SituationRoomPage() {
           </div>
         </div>
 
-        {/* 5. Checklist */}
+        {/* 5. Checklist — vem do Plano de Ação ativo (Fase 10). Sem plano ativo, CTA. */}
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShieldAlert size={14} className="text-primary" />
               <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">Checklist de Resposta</h3>
             </div>
-            <span className="text-[10px] font-mono bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full">
-              {completedCount}/{checklist.length}
-            </span>
+            {hasPlanActivated && (
+              <span className="text-[10px] font-mono bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full">
+                {completedCount}/{checklist.length}
+              </span>
+            )}
           </div>
-          <div className="p-3 space-y-1.5 max-h-[350px] overflow-y-auto">
-            {checklist.map(item => (
-              <button
-                key={item.id}
-                onClick={() => toggleChecklist(item.id)}
-                disabled={!canAct}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs text-left transition-colors ${
-                  item.done
-                    ? 'bg-success/10 text-success'
-                    : canAct
-                      ? 'bg-background border border-border text-foreground hover:bg-secondary/50 cursor-pointer'
-                      : 'bg-background border border-border text-muted-foreground'
-                }`}
-              >
-                {item.done
-                  ? <CheckCircle size={14} className="shrink-0" />
-                  : <Circle size={14} className="shrink-0 text-muted-foreground" />
-                }
-                <span className={item.done ? 'line-through' : ''}>{item.text}</span>
-              </button>
-            ))}
-          </div>
-          {/* Progress bar */}
-          <div className="px-4 py-2 border-t border-border">
-            <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
-              <div
-                className="h-full bg-success rounded-full transition-all duration-300"
-                style={{ width: `${checklist.length ? (completedCount / checklist.length) * 100 : 0}%` }}
-              />
+
+          {!hasPlanActivated ? (
+            <div className="p-6 text-center space-y-3">
+              <div className="w-10 h-10 mx-auto bg-secondary rounded-xl flex items-center justify-center">
+                <ShieldAlert size={18} className="text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">Nenhum plano de ação ativo</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Ative um plano de ação para carregar o checklist de resposta desta ocorrência.</p>
+              </div>
+              {canAct && terminalActivePlans.length > 0 && (
+                <button onClick={() => setShowPlanModal(true)} className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg cursor-pointer hover:opacity-90 transition-opacity">
+                  <ShieldAlert size={14} /> Ativar Plano
+                </button>
+              )}
+              {canAct && terminalActivePlans.length === 0 && (
+                <p className="text-[11px] text-muted-foreground italic">Nenhum plano ativo cadastrado para este terminal.</p>
+              )}
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="p-3 space-y-1.5 max-h-[350px] overflow-y-auto">
+                {checklist.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => toggleChecklist(item.id)}
+                    disabled={!canAct}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs text-left transition-colors ${
+                      item.done
+                        ? 'bg-success/10 text-success'
+                        : canAct
+                          ? 'bg-background border border-border text-foreground hover:bg-secondary/50 cursor-pointer'
+                          : 'bg-background border border-border text-muted-foreground'
+                    }`}
+                  >
+                    {item.done
+                      ? <CheckCircle size={14} className="shrink-0" />
+                      : <Circle size={14} className="shrink-0 text-muted-foreground" />
+                    }
+                    <span className={item.done ? 'line-through' : ''}>{item.text}</span>
+                  </button>
+                ))}
+              </div>
+              {/* Progress bar */}
+              <div className="px-4 py-2 border-t border-border">
+                <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-success rounded-full transition-all duration-300"
+                    style={{ width: `${checklist.length ? (completedCount / checklist.length) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -580,6 +626,15 @@ export function SituationRoomPage() {
 
       {/* 8. Internal Chat */}
       <OccurrenceChat occurrenceId={occurrenceId} />
+
+      {/* Modal de escolha do Plano de Ação (Fase 10) */}
+      <PlanActivationModal
+        open={showPlanModal}
+        onOpenChange={setShowPlanModal}
+        plans={terminalActivePlans}
+        onConfirm={handleActivatePlan}
+        isPending={activatePlan.isPending}
+      />
     </div>
   );
 }

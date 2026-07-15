@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { SeverityLevel } from '@/lib/types';
 import { situationRoomPath } from '@/lib/nav-config';
-import { useTerminals, useOccurrenceMutations, occurrencesApi } from '@/api';
+import { useTerminals, useOccurrenceMutations } from '@/api';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 /**
@@ -77,22 +77,14 @@ export function EmergencyDispatchProvider() {
         terminalId,
       },
       {
-        onSuccess: async (occ) => {
+        onSuccess: (occ) => {
           setShowModal(false);
           setForm({ description: '', severity: 'alta', terminalId: '' });
+          // A emergência nasce SEM plano ativado — o usuário escolhe qual plano de
+          // ação ativar na Sala de Situação (Fase 10). O acionamento das entidades
+          // já foi registrado automaticamente pelo back na criação.
           navigate(situationRoomPath(occ.id));
           toast.success(`Emergência ${occ.incNumber} disparada`);
-
-          // Evento de plano na timeline imutável (o acionamento das entidades
-          // já foi registrado automaticamente pelo back na criação).
-          try {
-            await occurrencesApi.addTimeline(occ.id, {
-              type: 'plano de emergência ativado',
-              description: `Emergência disparada com severidade ${form.severity.toUpperCase()} — resposta imediata iniciada`,
-            });
-          } catch {
-            toast.error('Emergência criada, mas houve falha ao registrar o evento de plano');
-          }
         },
         onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao disparar emergência'),
       },

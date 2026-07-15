@@ -132,6 +132,10 @@ export function useOccurrenceMutations() {
       mutationFn: (v: { id: string; status: OccurrenceStatus; comment?: string }) => occurrencesApi.setStatus(v.id, v.status, v.comment),
       onSuccess,
     }),
+    activatePlan: useMutation({
+      mutationFn: (v: { id: string; planId: string }) => occurrencesApi.activatePlan(v.id, v.planId),
+      onSuccess,
+    }),
     addTimeline: useMutation({
       mutationFn: (v: { id: string; input: TimelineEventInput }) => occurrencesApi.addTimeline(v.id, v.input),
       onSuccess,

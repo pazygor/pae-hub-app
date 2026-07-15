@@ -76,6 +76,8 @@ export const occurrencesApi = {
     adapt(await http.put<any>(`/occurrences/${id}`, input)),
   setStatus: async (id: string, status: OccurrenceStatus, comment?: string): Promise<ApiOccurrence> =>
     adapt(await http.put<any>(`/occurrences/${id}/status`, { status, comment })),
+  activatePlan: async (id: string, planId: string): Promise<OccurrenceDetail> =>
+    adaptDetail(await http.post<any>(`/occurrences/${id}/activate-plan`, { planId })),
   addTimeline: (id: string, input: TimelineEventInput): Promise<TimelineEvent> =>
     http.post<TimelineEvent>(`/occurrences/${id}/timeline`, input),
   addChecklistItem: (id: string, text: string): Promise<ApiChecklistItem> =>

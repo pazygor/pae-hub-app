@@ -95,7 +95,7 @@ export function OccurrencesPage() {
   const { data: plans = [] } = usePlans();
   const { data: documents = [] } = useDocuments();
   const { data: users = [] } = useUsers(user?.role !== 'entity'); // Responsável (entity não cria ocorrência)
-  const { create, setStatus, addTimeline, remove } = useOccurrenceMutations();
+  const { create, setStatus, addTimeline, activatePlan, remove } = useOccurrenceMutations();
   const [showForm, setShowForm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Occurrence | null>(null);
   const [form, setForm] = useState({ type: '', description: '', criticality: 'média' as OccurrenceCriticality, responsible: '', terminalId: '' });
@@ -195,16 +195,12 @@ export function OccurrencesPage() {
     );
   };
 
-  const activateEmergencyPlan = (occId: string, planName: string) => {
-    // Evento de plano + mudança de status — dois registros reais na timeline imutável
-    addTimeline.mutate(
-      { id: occId, input: { type: 'plano de emergência ativado', description: `${planName} ativado — resposta de emergência iniciada` } },
-      { onSuccess: () => setStatus.mutate({ id: occId, status: 'emergência ativa' }, { onError }), onError },
+  // Fase 10: ativa o plano ESCOLHIDO (o back aplica o checklist do plano à ocorrência).
+  const handleActivatePlan = (occId: string, planId: string) => {
+    activatePlan.mutate(
+      { id: occId, planId },
+      { onSuccess: () => toast.success('Plano ativado — checklist aplicado à ocorrência'), onError },
     );
-  };
-
-  const handleEmergencyAction = (occId: string, actionText: string) => {
-    addTimeline.mutate({ id: occId, input: { type: 'ação executada', description: actionText } }, { onError });
   };
 
   const getTerminalName = (o: { terminalId: string; terminalName?: string }) =>
@@ -481,8 +477,14 @@ export function OccurrencesPage() {
                 </div>
               </div>
 
-              {/* Emergency Response — planos reais da API (Fase 5a) */}
-              <EmergencyResponseSection occurrence={o} plans={plans} onActivate={activateEmergencyPlan} onActionComplete={handleEmergencyAction} />
+              {/* Emergency Response — escolha do plano via modal (Fase 10) */}
+              <EmergencyResponseSection
+                occurrence={o}
+                plans={plans}
+                onActivatePlan={handleActivatePlan}
+                onOpenSituationRoom={openSituationRoom}
+                activating={activatePlan.isPending}
+              />
 
               {/* Timeline toggle */}
               <button onClick={() => setExpandedId(isExpanded ? null : o.id)} className="w-full px-4 py-2.5 border-t border-border flex items-center justify-between text-xs font-bold text-muted-foreground hover:bg-secondary/50 transition-colors">

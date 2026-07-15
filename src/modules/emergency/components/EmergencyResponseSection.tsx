@@ -1,55 +1,44 @@
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { Occurrence, TimelineEvent, EmergencyPlan } from '@/lib/types';
-import { ShieldAlert, CheckCircle, Circle, AlertTriangle, Phone, ClipboardList, Clock } from 'lucide-react';
-
-interface EmergencyAction {
-  id: string;
-  text: string;
-  done: boolean;
-}
-
-const DEFAULT_ACTIONS: Omit<EmergencyAction, 'id'>[] = [
-  { text: 'Notificar equipe do terminal', done: false },
-  { text: 'Registrar acionamento da autoridade portuária', done: false },
-  { text: 'Iniciar checklist de resposta', done: false },
-  { text: 'Registrar atualização na linha do tempo', done: false },
-];
+import { Occurrence, EmergencyPlan } from '@/lib/types';
+import { ShieldAlert, ShieldCheck, ArrowRight } from 'lucide-react';
+import { PlanActivationModal } from './PlanActivationModal';
 
 interface Props {
   occurrence: Occurrence;
   plans: EmergencyPlan[];
-  onActivate: (occId: string, planName: string) => void;
-  onActionComplete: (occId: string, actionText: string) => void;
+  onActivatePlan: (occId: string, planId: string) => void;
+  onOpenSituationRoom: (occId: string) => void;
+  activating?: boolean;
 }
 
-export function EmergencyResponseSection({ occurrence, plans, onActivate, onActionComplete }: Props) {
+/**
+ * Bloco de "Resposta de Emergência" na lista de Ocorrências. Fase 10: a ativação
+ * do plano passa por um modal de escolha (planos ativos do terminal) — não mais
+ * fixo/mockado. O "plano ativo" é derivado da timeline (imutável), independente do
+ * status: atender/encerrar a ocorrência não desativa o plano.
+ */
+export function EmergencyResponseSection({ occurrence, plans, onActivatePlan, onOpenSituationRoom, activating }: Props) {
   const { user } = useAuth();
-  const [actions, setActions] = useState<EmergencyAction[]>(() =>
-    DEFAULT_ACTIONS.map((a, i) => ({ ...a, id: `ea-${i}` }))
-  );
+  const [showModal, setShowModal] = useState(false);
 
   if (!user) return null;
 
-  const isEmergencyActive = occurrence.status === 'emergência ativa';
   const canActivate = user.role === 'admin' || user.role === 'terminal';
-  const canInteract = canActivate; // entity can only watch
-  const terminalPlans = plans.filter(p => p.terminalId === occurrence.terminalId && p.status === 'ativo');
+  const activePlans = plans.filter(p => p.terminalId === occurrence.terminalId && p.status === 'ativo');
 
-  const handleActivate = () => {
-    const planName = terminalPlans.length > 0 ? terminalPlans[0].name : 'Plano de Emergência';
-    onActivate(occurrence.id, planName);
-  };
-
-  const toggleAction = (action: EmergencyAction) => {
-    if (!canInteract || action.done) return;
-    setActions(prev => prev.map(a => a.id === action.id ? { ...a, done: true } : a));
-    onActionComplete(occurrence.id, action.text);
-  };
+  // Plano ativo = último evento "plano de emergência ativado" na timeline (não o status).
+  const planEvents = (occurrence.timeline ?? []).filter(e => e.type === 'plano de emergência ativado');
+  const lastPlanEvent = planEvents[planEvents.length - 1];
+  const hasPlanActivated = !!lastPlanEvent;
+  const activePlanName = lastPlanEvent
+    ? (plans.find(p => lastPlanEvent.description.startsWith(p.name))?.name ?? lastPlanEvent.description.split(' ativado —')[0])
+    : '';
 
   // Ocorrência resolvida não oferece resposta de emergência (nada a acionar).
   if (occurrence.status === 'resolvido') return null;
-  if (!isEmergencyActive && !canActivate) return null;
+  // Sem plano ativo e sem permissão de ativar (entidade) → nada a mostrar.
+  if (!hasPlanActivated && !canActivate) return null;
 
   return (
     <div className="border-t border-border bg-background/50">
@@ -59,56 +48,44 @@ export function EmergencyResponseSection({ occurrence, plans, onActivate, onActi
           <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">Resposta de Emergência</h4>
         </div>
 
-        {!isEmergencyActive && canActivate && (
-          <div className="space-y-2">
-            {terminalPlans.length > 0 && (
-              <p className="text-[10px] text-muted-foreground">
-                Plano disponível: <span className="font-bold text-foreground">{terminalPlans[0].name}</span>
-              </p>
+        {hasPlanActivated && (
+          <div className="flex items-center gap-2 px-3 py-2 mb-2 bg-success/10 border border-success/20 rounded-lg">
+            <ShieldCheck size={14} className="text-success shrink-0" />
+            <span className="text-xs font-bold text-success">PLANO ATIVO:</span>
+            <span className="text-xs font-medium text-foreground truncate">{activePlanName}</span>
+          </div>
+        )}
+
+        {canActivate && (
+          <div className="flex flex-wrap items-center gap-2">
+            {activePlans.length > 0 ? (
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+              >
+                <ShieldAlert size={14} />
+                {hasPlanActivated ? 'Trocar Plano de Emergência' : 'Ativar Plano de Emergência'}
+              </button>
+            ) : (
+              !hasPlanActivated && <p className="text-[11px] text-muted-foreground italic">Nenhum plano ativo cadastrado para este terminal.</p>
             )}
             <button
-              onClick={handleActivate}
-              className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:opacity-90 transition-opacity animate-pulse"
+              onClick={() => onOpenSituationRoom(occurrence.id)}
+              className="flex items-center gap-1.5 px-3 py-2.5 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors"
             >
-              <ShieldAlert size={14} />
-              Ativar Plano de Emergência
+              Abrir Sala de Situação <ArrowRight size={13} />
             </button>
           </div>
         )}
-
-        {isEmergencyActive && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-lg">
-              <AlertTriangle size={14} className="text-primary" />
-              <span className="text-xs font-bold text-primary">EMERGÊNCIA ATIVA</span>
-            </div>
-
-            <div className="space-y-1.5">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Ações de Resposta</p>
-              {actions.map(action => (
-                <button
-                  key={action.id}
-                  onClick={() => toggleAction(action)}
-                  disabled={action.done || !canInteract}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-left transition-colors ${
-                    action.done
-                      ? 'bg-success/10 text-success'
-                      : canInteract
-                        ? 'bg-card border border-border text-foreground hover:bg-secondary/50 cursor-pointer'
-                        : 'bg-card border border-border text-muted-foreground'
-                  }`}
-                >
-                  {action.done
-                    ? <CheckCircle size={14} className="shrink-0" />
-                    : <Circle size={14} className="shrink-0 text-muted-foreground" />
-                  }
-                  <span className={action.done ? 'line-through' : ''}>{action.text}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
+
+      <PlanActivationModal
+        open={showModal}
+        onOpenChange={setShowModal}
+        plans={activePlans}
+        onConfirm={(planId) => { onActivatePlan(occurrence.id, planId); setShowModal(false); }}
+        isPending={activating}
+      />
     </div>
   );
 }

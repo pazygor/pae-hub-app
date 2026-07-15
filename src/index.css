@@ -22,7 +22,9 @@
     --secondary-foreground: 0 0% 15%;
 
     --muted: 0 0% 94%;
-    --muted-foreground: 0 0% 45%;
+    /* 40%: texto "muted" passa WCAG AA (>=4.5:1) sobre card/background/secondary.
+       45% ficava abaixo (4.16–4.46) — legenda e painéis do Mapa eram os casos-limite. */
+    --muted-foreground: 0 0% 40%;
 
     --accent: 0 72% 51%;
     --accent-foreground: 0 0% 100%;
@@ -75,7 +77,8 @@
     --secondary: 0 0% 14%;
     --secondary-foreground: 0 0% 95%;
     --muted: 0 0% 14%;
-    --muted-foreground: 0 0% 55%;
+    /* 60%: mais folga de contraste (5.5:1 no secondary, 6.3:1 no card) que os 55% anteriores. */
+    --muted-foreground: 0 0% 60%;
     --accent: 0 72% 51%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 63% 31%;
