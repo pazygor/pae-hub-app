@@ -4,14 +4,22 @@ import L from 'leaflet';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { Terminal, MapElement, MapLayerType } from '@/lib/types';
-import { Ship, AlertTriangle, Siren, MapPin, X, Clock, Plus, Trash2, Layers, Flame, Droplets, Route, TriangleAlert, Flag, Thermometer } from 'lucide-react';
+import { Ship, AlertTriangle, Siren, MapPin, X, Clock, Plus, Trash2, Pencil, Layers, Flame, Droplets, Route, TriangleAlert, Flag, Thermometer } from 'lucide-react';
 import { useTerminals, usePermissions, useOccurrences, useRisks, useMapElements, useMapElementMutations } from '@/api';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { LocationPicker } from '@/components/common/LocationPicker';
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import 'leaflet/dist/leaflet.css';
+
+// Estado inicial do form de novo elemento. Endereço/coords são opcionais: se ficarem
+// vazios, o elemento herda a localização do terminal (Fase 7).
+const EMPTY_ELEMENT = {
+  name: '', layerType: 'fire_equipment' as MapLayerType, description: '', terminalId: '',
+  cep: '', street: '', number: '', neighborhood: '', city: '', state: '', lat: 0, lng: 0,
+};
 
 const LAYER_CONFIG: Record<MapLayerType, { label: string; color: string; icon: typeof Flame }> = {
   fire_equipment: { label: 'Equipamentos de Incêndio', color: 'hsl(0, 72%, 51%)', icon: Flame },
@@ -30,12 +38,13 @@ export function EmergencyMapPage() {
   const { data: occurrences = [] } = useOccurrences();
   const { data: risks = [] } = useRisks();
   const { data: mapElements = [] } = useMapElements();
-  const { create: createElement, remove: removeElement } = useMapElementMutations();
+  const { create: createElement, update: updateElement, remove: removeElement } = useMapElementMutations();
   const [selected, setSelected] = useState<Terminal | null>(null);
   const [activeLayers, setActiveLayers] = useState<Set<MapLayerType>>(new Set());
   const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [addForm, setAddForm] = useState({ name: '', layerType: 'fire_equipment' as MapLayerType, description: '', terminalId: '' });
+  const [editId, setEditId] = useState<string | null>(null);
+  const [addForm, setAddForm] = useState({ ...EMPTY_ELEMENT });
   const [selectedElement, setSelectedElement] = useState<MapElement | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MapElement | null>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
@@ -109,29 +118,60 @@ export function EmergencyMapPage() {
     });
   };
 
-  const handleAddElement = () => {
+  const openNewElement = () => { setEditId(null); setAddForm({ ...EMPTY_ELEMENT }); setShowAddForm(true); };
+  const openEditElement = (el: MapElement) => {
+    setEditId(el.id);
+    setAddForm({
+      ...EMPTY_ELEMENT,
+      name: el.name, layerType: el.layerType, description: el.description ?? '',
+      terminalId: el.terminalId, lat: el.lat, lng: el.lng,
+      cep: el.cep ?? '', street: el.street ?? '', number: el.number ?? '',
+      neighborhood: el.neighborhood ?? '', city: el.city ?? '', state: el.state ?? '',
+    });
+    setShowAddForm(true);
+  };
+  const closeElementForm = () => { setShowAddForm(false); setEditId(null); setAddForm({ ...EMPTY_ELEMENT }); };
+
+  const handleSubmitElement = () => {
     if (!addForm.name.trim()) { toast.error('Informe o nome do elemento'); return; }
     if (!addForm.description.trim()) { toast.error('Informe a descrição do elemento'); return; }
-    if (user?.role === 'admin' && !addForm.terminalId) { toast.error('Selecione o terminal'); return; }
-    const terminalId = user?.role === 'terminal' ? user.linkId! : addForm.terminalId || visibleTerminalIds[0];
+    if (!editId && user?.role === 'admin' && !addForm.terminalId) { toast.error('Selecione o terminal'); return; }
+    const terminalId = editId
+      ? addForm.terminalId
+      : (user?.role === 'terminal' ? user.linkId! : addForm.terminalId || visibleTerminalIds[0]);
     const terminal = terminals.find(t => t.id === terminalId);
     if (!terminal) { toast.error('Terminal inválido'); return; }
-    // Place near terminal with small random offset
-    const offset = () => (Math.random() - 0.5) * 0.003;
+    // Coordenadas + endereço próprios (Localizar/ajuste manual) OU herda a
+    // localização exata do terminal quando o elemento não tem endereço (Fase 7).
+    const hasOwnCoords = !!(addForm.lat && addForm.lng);
+    const lat = hasOwnCoords ? addForm.lat : terminal.lat;
+    const lng = hasOwnCoords ? addForm.lng : terminal.lng;
+    const addr = hasOwnCoords
+      ? { cep: addForm.cep, street: addForm.street, number: addForm.number, neighborhood: addForm.neighborhood, city: addForm.city, state: addForm.state }
+      : { cep: terminal.cep, street: terminal.street, number: terminal.number, neighborhood: terminal.neighborhood, city: terminal.city, state: terminal.state };
+    const payload = { name: addForm.name, layerType: addForm.layerType, lat, lng, description: addForm.description, terminalId, ...addr };
+
+    if (editId) {
+      updateElement.mutate(
+        { id: editId, input: payload },
+        {
+          onSuccess: () => {
+            setActiveLayers(prev => new Set(prev).add(addForm.layerType));
+            setSelectedElement(null);
+            closeElementForm();
+            toast.success('Elemento atualizado');
+          },
+          onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao atualizar elemento'),
+        },
+      );
+      return;
+    }
     createElement.mutate(
-      {
-        name: addForm.name,
-        layerType: addForm.layerType,
-        lat: terminal.lat + offset(),
-        lng: terminal.lng + offset(),
-        description: addForm.description,
-        terminalId,
-      },
+      payload,
       {
         onSuccess: () => {
           setActiveLayers(prev => new Set(prev).add(addForm.layerType));
-          setAddForm({ name: '', layerType: 'fire_equipment', description: '', terminalId: '' });
-          setShowAddForm(false);
+          closeElementForm();
           toast.success('Elemento adicionado ao mapa');
         },
         onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao adicionar elemento'),
@@ -294,15 +334,19 @@ export function EmergencyMapPage() {
           <h2 className="text-lg font-bold text-foreground">Mapa de Emergência dos Terminais</h2>
         </div>
         {canEdit && (
-          <button onClick={() => setShowAddForm(!showAddForm)} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity">
+          <button onClick={() => (showAddForm ? closeElementForm() : openNewElement())} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity">
             <Plus size={14} /> Novo Elemento
           </button>
         )}
       </div>
 
-      {/* Add element form */}
+      {/* Add/Edit element form */}
       {showAddForm && canEdit && (
         <div className="bg-card border border-border rounded-lg p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-sm text-foreground">{editId ? 'Editar Elemento' : 'Novo Elemento'}</h3>
+            <button onClick={closeElementForm} className="text-muted-foreground hover:text-foreground cursor-pointer"><X size={16} /></button>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Nome do elemento *</label>
@@ -317,7 +361,7 @@ export function EmergencyMapPage() {
                 </SelectContent>
               </Select>
             </div>
-            {user.role === 'admin' && (
+            {user.role === 'admin' && !editId && (
               <div className="sm:col-span-2">
                 <label className={labelCls}>Terminal *</label>
                 <Select value={addForm.terminalId} onValueChange={v => setAddForm(f => ({ ...f, terminalId: v }))}>
@@ -333,9 +377,21 @@ export function EmergencyMapPage() {
             <label className={labelCls}>Descrição *</label>
             <textarea placeholder="Descreva o elemento..." value={addForm.description} onChange={e => setAddForm(f => ({ ...f, description: e.target.value }))} className={`${inputCls} min-h-[50px]`} />
           </div>
+          <div className="border-t border-border pt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <MapPin size={14} className="text-primary" />
+              <span className="text-xs font-bold text-foreground uppercase tracking-wider">Localização (opcional)</span>
+            </div>
+            <LocationPicker
+              value={addForm}
+              onChange={patch => setAddForm(f => ({ ...f, ...patch }))}
+              entityLabel="elemento"
+              hint={<>Informe o endereço e clique em <strong>Localizar</strong>, ou ajuste a latitude/longitude manualmente. <strong>Se deixar em branco, o elemento assume a localização do terminal.</strong></>}
+            />
+          </div>
           <div className="flex gap-2">
-            <button onClick={handleAddElement} disabled={createElement.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-60">Cadastrar</button>
-            <button onClick={() => setShowAddForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-md cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
+            <button onClick={handleSubmitElement} disabled={createElement.isPending || updateElement.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-60">{editId ? 'Salvar alterações' : 'Cadastrar'}</button>
+            <button onClick={closeElementForm} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-md cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
           </div>
         </div>
       )}
@@ -458,7 +514,10 @@ export function EmergencyMapPage() {
                   </div>
                 </div>
                 {canDelete && (
-                  <div className="p-4 border-t border-border">
+                  <div className="p-4 border-t border-border flex items-center gap-4">
+                    <button onClick={() => openEditElement(selectedElement)} className="flex items-center gap-1.5 text-xs font-bold text-foreground hover:text-primary transition-colors cursor-pointer">
+                      <Pencil size={13} /> Editar elemento
+                    </button>
                     <button onClick={() => setDeleteTarget(selectedElement)} className="flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 transition-colors cursor-pointer">
                       <Trash2 size={13} /> Remover elemento
                     </button>

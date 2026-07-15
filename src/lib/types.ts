@@ -182,6 +182,12 @@ export interface MapElement {
   lng: number;
   description: string;
   terminalId: string;
+  cep?: string;
+  street?: string;
+  number?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
 }
 
 export interface ChatMessage {

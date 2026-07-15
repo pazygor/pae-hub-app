@@ -49,6 +49,12 @@ export interface MapElementInput {
   lng: number;
   description?: string;
   terminalId?: string;
+  cep?: string;
+  street?: string;
+  number?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
 }
 
 export const mapElementsApi = {
