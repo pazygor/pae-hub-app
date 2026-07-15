@@ -109,7 +109,6 @@ export function TerminalsPage() {
   const save = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Informe o nome do terminal'); return; }
-    if (!form.responsible.trim()) { toast.error('Informe o responsável'); return; }
     if (!form.contact.trim()) { toast.error('Informe o contato'); return; }
     const onSuccess = () => { setShowForm(false); toast.success(editId ? 'Terminal atualizado' : 'Terminal cadastrado'); };
     if (editId) update.mutate({ id: editId, form }, { onSuccess, onError });
@@ -168,7 +167,7 @@ export function TerminalsPage() {
                 <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inputCls} />
               </div>
               <div>
-                <label className={labelCls}>Responsável *</label>
+                <label className={labelCls}>Responsável</label>
                 <Select value={form.responsible || undefined} onValueChange={v => setForm(f => ({ ...f, responsible: v }))}>
                   <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o responsável..." /></SelectTrigger>
                   <SelectContent>

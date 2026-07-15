@@ -194,7 +194,7 @@ export function AccessLevelsPage() {
                         className="w-full px-3 py-2 rounded-lg text-sm bg-background border border-input text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                       >
                         <option value="">Nenhum</option>
-                        {users.filter(tu => tu.accessLevel === 'tático').map(tu => (
+                        {users.filter(tu => tu.accessLevel === 'tático' && tu.linkId === u.linkId).map(tu => (
                           <option key={tu.id} value={tu.id}>{tu.name}</option>
                         ))}
                       </select>

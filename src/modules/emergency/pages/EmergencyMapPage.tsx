@@ -44,6 +44,7 @@ export function EmergencyMapPage() {
   const markersRef = useRef<L.CircleMarker[]>([]);
   const elementMarkersRef = useRef<L.CircleMarker[]>([]);
   const heatLayerRef = useRef<L.Layer | null>(null);
+  const didAutoSelectRef = useRef(false);
 
   const visibleTerminalIds = useMemo(() => {
     if (!user) return [];
@@ -54,6 +55,19 @@ export function EmergencyMapPage() {
   }, [user, terminals, permissions]);
 
   const visibleTerminals = useMemo(() => terminals.filter(t => visibleTerminalIds.includes(t.id)), [terminals, visibleTerminalIds]);
+
+  // Ao abrir o mapa, já mostra selecionado o terminal do vínculo nativo (terminal/tático/
+  // operacional = seu terminal; entidade/admin = o primeiro visível). Roda só uma vez — depois
+  // respeita o que o usuário clicar (inclusive deselecionar).
+  useEffect(() => {
+    if (didAutoSelectRef.current || !user || visibleTerminals.length === 0) return;
+    const nativeId = user.role === 'terminal' ? user.linkId : visibleTerminals[0]?.id;
+    const nativeTerminal = visibleTerminals.find(t => t.id === nativeId) ?? visibleTerminals[0];
+    if (nativeTerminal) {
+      setSelected(nativeTerminal);
+      didAutoSelectRef.current = true;
+    }
+  }, [user, visibleTerminals]);
 
   const visibleElements = useMemo(() =>
     mapElements.filter(el => visibleTerminalIds.includes(el.terminalId) && activeLayers.has(el.layerType)),

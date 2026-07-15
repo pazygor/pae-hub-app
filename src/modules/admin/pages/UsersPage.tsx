@@ -46,7 +46,6 @@ export function UsersPage() {
     if (!editId && form.password.length < 8) { toast.error('A senha deve ter no mínimo 8 caracteres'); return; }
     if (form.role !== 'admin' && !form.linkId) { toast.error('Selecione o vínculo (terminal/entidade)'); return; }
     if (form.role === 'terminal' && !form.accessLevel) { toast.error('Selecione o nível de acesso'); return; }
-    if (form.accessLevel === 'operacional' && !form.tacticalManagerId) { toast.error('Selecione o gestor tático'); return; }
 
     const input: UserInput = {
       name: form.name,
@@ -104,8 +103,9 @@ export function UsersPage() {
 
   const linkOptions = form.role === 'terminal' ? terminals : form.role === 'entity' ? entities : [];
 
-  // Tático users available as managers
-  const tacticalUsers = users.filter(u => u.accessLevel === 'tático');
+  // Gestores táticos disponíveis: apenas os do MESMO terminal (vínculo nativo) do
+  // operacional que está sendo cadastrado/editado. Sem terminal escolhido, lista vazia.
+  const tacticalUsers = users.filter(u => u.accessLevel === 'tático' && form.linkId && u.linkId === form.linkId);
 
   const pm = presentationMode;
   const userCanManage = canManage(user);
@@ -186,7 +186,7 @@ export function UsersPage() {
             {form.role !== 'admin' && (
               <div>
                 <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Vínculo *</label>
-                <Select value={form.linkId} onValueChange={v => setForm(f => ({ ...f, linkId: v }))}>
+                <Select value={form.linkId} onValueChange={v => setForm(f => ({ ...f, linkId: v, tacticalManagerId: '' }))}>
                   <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>
                     {linkOptions.map(opt => <SelectItem key={opt.id} value={opt.id} className="cursor-pointer">{opt.name}</SelectItem>)}
@@ -207,11 +207,11 @@ export function UsersPage() {
             )}
             {form.accessLevel === 'operacional' && (
               <div>
-                <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Gestor Tático *</label>
-                <Select value={form.tacticalManagerId} onValueChange={v => setForm(f => ({ ...f, tacticalManagerId: v }))}>
-                  <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Gestor Tático</label>
+                <Select value={form.tacticalManagerId} onValueChange={v => setForm(f => ({ ...f, tacticalManagerId: v }))} disabled={!form.linkId}>
+                  <SelectTrigger className="cursor-pointer"><SelectValue placeholder={form.linkId ? 'Selecione...' : 'Selecione o terminal primeiro'} /></SelectTrigger>
                   <SelectContent>
-                    {tacticalUsers.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum tático cadastrado</div>}
+                    {tacticalUsers.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">{form.linkId ? 'Nenhum gestor tático neste terminal' : 'Selecione o terminal primeiro'}</div>}
                     {tacticalUsers.map(tu => <SelectItem key={tu.id} value={tu.id} className="cursor-pointer">{tu.name}</SelectItem>)}
                   </SelectContent>
                 </Select>

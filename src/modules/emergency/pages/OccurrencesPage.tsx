@@ -25,6 +25,9 @@ const OCCURRENCE_TYPES = [
   'Queda de carga', 'Acidente de trabalho', 'Contaminação ambiental', 'Outros',
 ];
 
+// Tipo em destaque no dropdown de criação: primeiro na ordem e em negrito.
+const PRIORITY_OCCURRENCE_TYPE = 'Emergência';
+
 const CRITICALITY_OPTIONS: OccurrenceCriticality[] = ['baixa', 'média', 'alta', 'crítica'];
 const STATUS_OPTIONS: OccurrenceStatus[] = ['aberto', 'em atendimento', 'emergência ativa', 'resolvido'];
 
@@ -126,9 +129,12 @@ export function OccurrencesPage() {
   // Tipos que o usuário pode abrir/ver (Níveis de Acesso). Admin = todos;
   // não-admin = só os permitidos (vazio = nenhum).
   const availableTypes = useMemo(() => {
-    if (user?.role === 'admin') return OCCURRENCE_TYPES;
-    const allowed = user?.allowedOccurrenceTypes ?? [];
-    return OCCURRENCE_TYPES.filter(t => allowed.includes(t));
+    const base = user?.role === 'admin'
+      ? OCCURRENCE_TYPES
+      : OCCURRENCE_TYPES.filter(t => (user?.allowedOccurrenceTypes ?? []).includes(t));
+    // "Emergência" é o tipo em destaque: vem primeiro na ordem (e em negrito no dropdown).
+    return [...base].sort((a, b) =>
+      a === PRIORITY_OCCURRENCE_TYPE ? -1 : b === PRIORITY_OCCURRENCE_TYPE ? 1 : 0);
   }, [user?.role, user?.allowedOccurrenceTypes]);
 
   // Usuário não-admin sem nenhum tipo liberado → não vê/cria ocorrências.
@@ -280,7 +286,7 @@ export function OccurrencesPage() {
               <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
                 <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o tipo..." /></SelectTrigger>
                 <SelectContent>
-                  {availableTypes.map(t => <SelectItem key={t} value={t} className="cursor-pointer">{t}</SelectItem>)}
+                  {availableTypes.map(t => <SelectItem key={t} value={t} className={`cursor-pointer ${t === PRIORITY_OCCURRENCE_TYPE ? 'font-bold' : ''}`}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
