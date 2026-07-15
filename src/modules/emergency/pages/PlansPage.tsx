@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { EmergencyPlan, PlanStatus } from '@/lib/types';
-import { Plus, FileText, Trash2, CheckSquare, Square, Loader2, Pencil } from 'lucide-react';
-import { usePlans, usePlanMutations, useTerminals, useUsers } from '@/api';
+import { Plus, FileText, Trash2, CheckSquare, Square, Loader2, Pencil, Filter } from 'lucide-react';
+import { usePlans, usePlanMutations, useTerminals, useUsers, useRisks } from '@/api';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { MultiSelect } from '@/components/ui/multi-select';
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
@@ -16,30 +17,42 @@ const STATUS_OPTIONS: { value: PlanStatus; label: string }[] = [
   { value: 'em revisão', label: 'Em Revisão' },
 ];
 
+const emptyForm = { name: '', description: '', responsible: '', status: 'ativo' as PlanStatus, checklistText: '', terminalId: '', riskIds: [] as string[] };
+
 export function PlansPage() {
   const { user } = useAuth();
   const { data: plans = [], isLoading, isError } = usePlans();
   const { data: terminals = [] } = useTerminals();
   const { data: users = [] } = useUsers(user?.role !== 'entity');
+  const { data: risks = [] } = useRisks();
   const { create, update, remove } = usePlanMutations();
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<EmergencyPlan | null>(null);
-  const [form, setForm] = useState({ name: '', description: '', responsible: '', status: 'ativo' as PlanStatus, checklistText: '', terminalId: '' });
+  const [filterTerminal, setFilterTerminal] = useState<string>('all');
+  const [filterRisk, setFilterRisk] = useState<string>('all');
+  const [form, setForm] = useState({ ...emptyForm });
 
-  if (!user) return null;
-
-  const canCreate = user.role === 'admin' || user.role === 'terminal';
+  const canCreate = user?.role === 'admin' || user?.role === 'terminal';
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
   const inputCls = 'w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary';
   const labelCls = 'block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1';
 
-  // Responsável: usuários do terminal onde o plano será criado.
-  const responsibleTerminalId = user.role === 'admin' ? form.terminalId : (user.linkId ?? '');
-  const responsibleOptions = users.filter(u => u.role === 'terminal' && (!responsibleTerminalId || u.linkId === responsibleTerminalId));
+  // Terminal do plano (para responsável e riscos): admin escolhe; demais = o próprio.
+  const planTerminalId = user?.role === 'admin' ? form.terminalId : (user?.linkId ?? '');
+  const responsibleOptions = users.filter(u => u.role === 'terminal' && (!planTerminalId || u.linkId === planTerminalId));
+  const riskOptions = risks.filter(r => r.terminalId === planTerminalId);
 
-  const emptyForm = { name: '', description: '', responsible: '', status: 'ativo' as PlanStatus, checklistText: '', terminalId: '' };
-  const openNew = () => { setForm(emptyForm); setEditId(null); setShowForm(true); };
+  // `useTerminals()` já vem escopado pelo back conforme Níveis de Acesso (casa +
+  // allowedTerminals). O filtro aparece para qualquer perfil com acesso a mais de
+  // um terminal; as opções são exatamente esses terminais.
+  const showTerminalFilter = terminals.length > 1;
+  // O filtro de riscos aparece depois de escolher 1 terminal, com os riscos dele.
+  const filterRiskOptions = filterTerminal !== 'all' ? risks.filter(r => r.terminalId === filterTerminal) : [];
+
+  if (!user) return null;
+
+  const openNew = () => { setForm({ ...emptyForm }); setEditId(null); setShowForm(true); };
   const openEdit = (p: EmergencyPlan) => {
     setForm({
       name: p.name,
@@ -48,11 +61,12 @@ export function PlansPage() {
       status: p.status,
       checklistText: p.checklist.map(c => c.text).join('\n'),
       terminalId: p.terminalId || '',
+      riskIds: p.riskIds ?? [],
     });
     setEditId(p.id);
     setShowForm(true);
   };
-  const closeForm = () => { setShowForm(false); setEditId(null); setForm(emptyForm); };
+  const closeForm = () => { setShowForm(false); setEditId(null); setForm({ ...emptyForm }); };
 
   const handleSave = () => {
     if (!form.name.trim()) { toast.error('Informe o nome do plano'); return; }
@@ -70,6 +84,7 @@ export function PlansPage() {
       responsible: form.responsible || undefined,
       checklist,
       status: form.status,
+      riskIds: form.riskIds,
       ...(user.role === 'admin' && form.terminalId ? { terminalId: form.terminalId } : {}),
     };
     const onSuccess = () => { closeForm(); toast.success(editId ? 'Plano atualizado' : 'Plano cadastrado'); };
@@ -96,6 +111,12 @@ export function PlansPage() {
 
   const getTerminalName = (p: { terminalId: string }) =>
     (p as any).terminalName || terminals.find(t => t.id === p.terminalId)?.name || p.terminalId;
+  const riskTypeById = (id: string) => risks.find(r => r.id === id)?.type;
+
+  const filteredPlans = plans.filter(p =>
+    (filterTerminal === 'all' || p.terminalId === filterTerminal) &&
+    (filterRisk === 'all' || (p.riskIds ?? []).includes(filterRisk)),
+  );
 
   return (
     <div className="space-y-4">
@@ -147,7 +168,7 @@ export function PlansPage() {
             {user.role === 'admin' && (
               <div>
                 <label className={labelCls}>Terminal *</label>
-                <Select value={form.terminalId} onValueChange={v => setForm(f => ({ ...f, terminalId: v, responsible: '' }))}>
+                <Select value={form.terminalId} onValueChange={v => setForm(f => ({ ...f, terminalId: v, responsible: '', riskIds: [] }))} disabled={!!editId}>
                   <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
                   <SelectContent>
                     {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
@@ -160,6 +181,24 @@ export function PlansPage() {
             <label className={labelCls}>Descrição</label>
             <textarea placeholder="Descreva o plano..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className={`${inputCls} min-h-[60px]`} />
           </div>
+
+          {/* Riscos relacionados (Fase 9) */}
+          <div>
+            <label className={labelCls}>Riscos relacionados <span className="normal-case font-normal text-muted-foreground/70">(a quais riscos este plano responde)</span></label>
+            {!planTerminalId ? (
+              <p className="text-xs text-muted-foreground italic">Selecione o terminal primeiro.</p>
+            ) : (
+              <MultiSelect
+                options={riskOptions.map(r => ({ value: r.id, label: r.type, hint: r.level }))}
+                selected={form.riskIds}
+                onChange={ids => setForm(f => ({ ...f, riskIds: ids }))}
+                placeholder="Selecione os riscos..."
+                searchPlaceholder="Buscar risco..."
+                emptyText="Nenhum risco cadastrado neste terminal."
+              />
+            )}
+          </div>
+
           <div>
             <label className={labelCls}>Checklist <span className="normal-case font-normal text-muted-foreground/70">(uma ação por linha)</span></label>
             <textarea placeholder={'Acionar alarme\nEvacuar área\nContatar bombeiros'} value={form.checklistText} onChange={e => setForm(f => ({ ...f, checklistText: e.target.value }))} className={`${inputCls} min-h-[60px]`} />
@@ -173,48 +212,82 @@ export function PlansPage() {
         </div>
       )}
 
+      {/* Filtros em cascata: terminal (admin/entidade) → risco daquele terminal */}
+      {showTerminalFilter && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <Filter size={14} className="text-muted-foreground" />
+          <Select value={filterTerminal} onValueChange={v => { setFilterTerminal(v); setFilterRisk('all'); }}>
+            <SelectTrigger className="w-auto min-w-[180px] cursor-pointer h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="cursor-pointer">Todos os terminais</SelectItem>
+              {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {filterTerminal !== 'all' && (
+            <Select value={filterRisk} onValueChange={setFilterRisk}>
+              <SelectTrigger className="w-auto min-w-[180px] cursor-pointer h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="cursor-pointer">Todos os riscos</SelectItem>
+                {filterRiskOptions.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">Nenhum risco neste terminal</div>}
+                {filterRiskOptions.map(r => <SelectItem key={r.id} value={r.id} className="cursor-pointer">{r.type}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+          {(filterTerminal !== 'all' || filterRisk !== 'all') && (
+            <button onClick={() => { setFilterTerminal('all'); setFilterRisk('all'); }} className="text-[10px] text-primary font-bold hover:underline cursor-pointer">Limpar filtros</button>
+          )}
+          <span className="ml-auto text-[10px] text-muted-foreground font-mono-data">{filteredPlans.length} plano(s)</span>
+        </div>
+      )}
+
       <div className="space-y-4">
         {isLoading && (
           <p className="p-4 text-sm text-muted-foreground bg-card border border-border rounded-lg flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Carregando planos...</p>
         )}
         {isError && !isLoading && <p className="p-4 text-sm text-primary bg-card border border-border rounded-lg">Falha ao carregar planos da API.</p>}
-        {!isLoading && !isError && plans.length === 0 && <p className="p-4 text-sm text-muted-foreground italic bg-card border border-border rounded-lg">Nenhum plano cadastrado.</p>}
-        {plans.map(p => (
-          <div key={p.id} className="bg-card border border-border rounded-lg">
-            <div className="p-4 border-b border-border flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm font-bold text-foreground">{p.name}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusColor(p.status)}`}>{p.status}</span>
+        {!isLoading && !isError && filteredPlans.length === 0 && <p className="p-4 text-sm text-muted-foreground italic bg-card border border-border rounded-lg">Nenhum plano encontrado.</p>}
+        {filteredPlans.map(p => {
+          const relatedRisks = (p.riskIds ?? []).map(riskTypeById).filter(Boolean) as string[];
+          return (
+            <div key={p.id} className="bg-card border border-border rounded-lg">
+              <div className="p-4 border-b border-border flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-bold text-foreground">{p.name}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusColor(p.status)}`}>{p.status}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{p.description}</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">{getTerminalName(p)} · Resp: {p.responsible}</p>
+                  {relatedRisks.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground mt-1">Riscos: {relatedRisks.join(', ')}</p>
+                  )}
                 </div>
-                <p className="text-xs text-muted-foreground">{p.description}</p>
-                <p className="text-[10px] text-muted-foreground mt-1">{getTerminalName(p)} · Resp: {p.responsible}</p>
+                {canCreate && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => openEdit(p)} title="Editar" className="text-muted-foreground hover:text-primary transition-colors p-1 cursor-pointer"><Pencil size={14} /></button>
+                    <button onClick={() => setDeleteTarget(p)} title="Excluir" className="text-muted-foreground hover:text-emergency transition-colors p-1 cursor-pointer"><Trash2 size={14} /></button>
+                  </div>
+                )}
               </div>
-              {canCreate && (
-                <div className="flex items-center gap-1 shrink-0">
-                  <button onClick={() => openEdit(p)} title="Editar" className="text-muted-foreground hover:text-primary transition-colors p-1 cursor-pointer"><Pencil size={14} /></button>
-                  <button onClick={() => setDeleteTarget(p)} title="Excluir" className="text-muted-foreground hover:text-emergency transition-colors p-1 cursor-pointer"><Trash2 size={14} /></button>
+              {p.checklist.length > 0 && (
+                <div className="p-4 space-y-2">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Checklist</p>
+                  {p.checklist.map((c, i) => (
+                    <button
+                      key={i}
+                      onClick={() => canCreate && toggleChecklist(p.id, i)}
+                      className={`flex items-center gap-2 text-xs w-full text-left ${c.done ? 'text-muted-foreground line-through' : 'text-foreground'} ${canCreate ? 'cursor-pointer hover:bg-secondary/50 -mx-1 px-1 py-0.5 rounded' : ''}`}
+                      disabled={!canCreate}
+                    >
+                      {c.done ? <CheckSquare size={14} className="text-success shrink-0" /> : <Square size={14} className="text-muted-foreground shrink-0" />}
+                      {c.text}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
-            {p.checklist.length > 0 && (
-              <div className="p-4 space-y-2">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Checklist</p>
-                {p.checklist.map((c, i) => (
-                  <button
-                    key={i}
-                    onClick={() => canCreate && toggleChecklist(p.id, i)}
-                    className={`flex items-center gap-2 text-xs w-full text-left ${c.done ? 'text-muted-foreground line-through' : 'text-foreground'} ${canCreate ? 'cursor-pointer hover:bg-secondary/50 -mx-1 px-1 py-0.5 rounded' : ''}`}
-                    disabled={!canCreate}
-                  >
-                    {c.done ? <CheckSquare size={14} className="text-success shrink-0" /> : <Square size={14} className="text-muted-foreground shrink-0" />}
-                    {c.text}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Confirmação de remoção (AlertDialog — substitui o confirm() nativo) */}

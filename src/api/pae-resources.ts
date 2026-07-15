@@ -13,6 +13,14 @@ export interface RiskInput {
   affectedArea?: string;
   date?: string;
   terminalId?: string; // obrigatório para admin
+  lat?: number;
+  lng?: number;
+  cep?: string;
+  street?: string;
+  number?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
 }
 
 export const risksApi = {
@@ -31,6 +39,7 @@ export interface PlanInput {
   checklist?: { text: string; done: boolean }[];
   status?: EmergencyPlan['status'];
   terminalId?: string;
+  riskIds?: string[];
 }
 
 export const plansApi = {

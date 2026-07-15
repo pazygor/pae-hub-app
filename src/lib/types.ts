@@ -130,6 +130,14 @@ export interface Risk {
   level: RiskLevel;
   affectedArea: string;
   date: string;
+  lat?: number;
+  lng?: number;
+  cep?: string;
+  street?: string;
+  number?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
 }
 
 export interface EmergencyPlan {
@@ -140,6 +148,7 @@ export interface EmergencyPlan {
   responsible: string;
   checklist: { text: string; done: boolean }[];
   status: PlanStatus;
+  riskIds?: string[];
 }
 
 export type SeverityLevel = 'baixa' | 'média' | 'alta';
