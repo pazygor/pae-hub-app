@@ -21,6 +21,8 @@ interface ApiTerminal {
   lat: number | null;
   lng: number | null;
   status: string;
+  activeModules?: string[];
+  activeSafetySubModules?: string[];
 }
 
 /** O back já devolve no formato do front (lat/lng); só normaliza nulos. */
@@ -40,6 +42,8 @@ function adapt(t: ApiTerminal): Terminal {
     lat: t.lat ?? 0,
     lng: t.lng ?? 0,
     status: (t.status as Terminal['status']) ?? 'Ativo',
+    activeModules: t.activeModules ?? [],
+    activeSafetySubModules: t.activeSafetySubModules ?? [],
   };
 }
 
@@ -69,6 +73,9 @@ export const terminalsApi = {
     adapt(await http.post<ApiTerminal>('/terminals', toInput(form))),
   update: async (id: string, form: Omit<Terminal, 'id'>): Promise<Terminal> =>
     adapt(await http.put<ApiTerminal>(`/terminals/${id}`, toInput(form))),
+  /** Item 7 — configura pacotes/módulos do terminal (Conformidade derivada no back). */
+  updateModules: async (id: string, input: { activeModules: string[]; activeSafetySubModules: string[] }): Promise<Terminal> =>
+    adapt(await http.put<ApiTerminal>(`/terminals/${id}/modules`, input)),
   remove: (id: string): Promise<unknown> => http.del(`/terminals/${id}`),
   /** Exclusão permanente (admin) — a API bloqueia (409) se houver dados vinculados. */
   hardDelete: (id: string): Promise<unknown> => http.del(`/terminals/${id}/permanent`),

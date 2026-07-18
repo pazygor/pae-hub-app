@@ -8,16 +8,18 @@ import { ProductModule, SafetySubModule, getDefaultModules, getDefaultSafetySubM
  */
 export function getUserActiveConfig(
   user: AppUser | null,
-  data: AppData,
+  _data?: AppData,
 ): { modules: ProductModule[]; safetySubModules: SafetySubModule[] } {
-  if (!user || user.role === 'admin' || !user.linkId) {
-    return { modules: getDefaultModules(), safetySubModules: getDefaultSafetySubModules() };
+  // Fonte da verdade agora é o /auth/me (item 7): `user.modules` já traz a config
+  // do terminal do usuário, com a Conformidade derivada. Fallback = tudo ligado.
+  if (!user) return { modules: getDefaultModules(), safetySubModules: getDefaultSafetySubModules() };
+  if (user.modules) {
+    return {
+      modules: user.modules.active as ProductModule[],
+      safetySubModules: user.modules.safetySubModules as SafetySubModule[],
+    };
   }
-  const config = data.terminalModules?.find(tm => tm.terminalId === user.linkId);
-  return {
-    modules: config ? config.activeModules : getDefaultModules(),
-    safetySubModules: config?.activeSafetySubModules ?? getDefaultSafetySubModules(),
-  };
+  return { modules: getDefaultModules(), safetySubModules: getDefaultSafetySubModules() };
 }
 
 /**

@@ -38,6 +38,7 @@ export function useTerminalMutations() {
   return {
     create: useMutation({ mutationFn: (form: Omit<Terminal, 'id'>) => terminalsApi.create(form), onSuccess }),
     update: useMutation({ mutationFn: (v: { id: string; form: Omit<Terminal, 'id'> }) => terminalsApi.update(v.id, v.form), onSuccess }),
+    updateModules: useMutation({ mutationFn: (v: { id: string; activeModules: string[]; activeSafetySubModules: string[] }) => terminalsApi.updateModules(v.id, { activeModules: v.activeModules, activeSafetySubModules: v.activeSafetySubModules }), onSuccess }),
     remove: useMutation({ mutationFn: (id: string) => terminalsApi.remove(id), onSuccess }),
     hardDelete: useMutation({ mutationFn: (id: string) => terminalsApi.hardDelete(id), onSuccess }),
   };

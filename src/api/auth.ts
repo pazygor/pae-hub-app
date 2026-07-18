@@ -24,6 +24,7 @@ export interface ApiAuthUser {
   allowedModules?: string[];
   allowedTerminals?: string[];
   allowedOccurrenceTypes?: string[];
+  modules?: { active: string[]; safetySubModules: string[] };
   permissions: string[];
 }
 

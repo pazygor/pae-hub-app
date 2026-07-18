@@ -46,6 +46,10 @@ export interface Terminal {
   lat: number;
   lng: number;
   status: 'Ativo' | 'Inativo' | 'Revisão';
+  // Pacotes/módulos do terminal (item 7). `activeSafetySubModules` são os toggles
+  // reais (trainings/epis); Conformidade é derivada e não vem aqui.
+  activeModules?: string[];
+  activeSafetySubModules?: string[];
 }
 
 export interface Entity {
@@ -71,6 +75,9 @@ export interface AppUser {
   allowedModules?: string[];
   allowedTerminals?: string[];
   allowedOccurrenceTypes?: string[];
+  /** Módulos ativos no contexto do usuário (item 7): pacotes + safety efetiva
+   *  (Conformidade já derivada). Vem do /auth/me — fonte do gating do menu. */
+  modules?: { active: string[]; safetySubModules: string[] };
 }
 
 export interface Permission {

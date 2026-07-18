@@ -29,6 +29,8 @@ export function adaptAuthUser(api: ApiAuthUser): AppUser {
     allowedModules: api.allowedModules,
     allowedTerminals: api.allowedTerminals,
     allowedOccurrenceTypes: api.allowedOccurrenceTypes,
+    // Config de módulos do contexto (item 7) — fonte do gating do menu
+    modules: api.modules,
     // Nunca exposto pela API (campo existe no tipo por herança histórica)
     password: '',
   };
