@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { canManage, isTerminalLocked } from '@/lib/access-control';
+import { terminalHasSafetySub } from '@/lib/modules';
+import { MultiSelect } from '@/components/ui/multi-select';
 import { useTrainings, useTrainingAssignments, useTrainingMutations, useUsers, useTerminals, usePermissions } from '@/api';
 import {
   GraduationCap, Plus, Trash2, CheckCircle, AlertTriangle, Clock, X, Users, UserPlus,
@@ -64,7 +66,7 @@ export function TrainingsPage() {
   const [showAssignForm, setShowAssignForm] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'user' | 'training'>('training');
-  const [form, setForm] = useState({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalId: '' });
+  const [form, setForm] = useState({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalIds: [] as string[] });
   const [formError, setFormError] = useState('');
   const [batchAssign, setBatchAssign] = useState<string | null>(null);
   const [assignForm, setAssignForm] = useState({ userId: '', completedDate: '', expiryDate: '', certificate: '' });
@@ -78,6 +80,9 @@ export function TrainingsPage() {
     return [];
   }, [user, terminals, permissions]);
   const terminalLocked = isTerminalLocked(user);
+  // "Global" (org-wide) só para admin; não-admin cria no(s) próprio(s) terminal(is) (default = casa).
+  const isAdminUser = user?.role === 'admin';
+  const defaultTerminalIds = isAdminUser ? [] : (user?.linkId ? [user.linkId] : []);
 
   // Filters — auto-lock terminal for non-admin users
   const [filterTerminal, setFilterTerminal] = useState('all');
@@ -216,17 +221,18 @@ export function TrainingsPage() {
   // Actions
   const addTraining = () => {
     if (!form.name) { setFormError('Informe o nome do treinamento.'); return; }
+    if (!isAdminUser && form.terminalIds.length === 0) { setFormError('Selecione ao menos um terminal.'); return; }
     setFormError('');
     create.mutate(
       {
         name: form.name, description: form.description, mandatory: form.mandatory,
         materialFileName: form.materialFileName || undefined,
         videoUrl: form.videoUrl || undefined,
-        terminalId: form.terminalId || undefined,
+        terminalIds: form.terminalIds,
       },
       {
         onSuccess: () => {
-          setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalId: '' });
+          setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalIds: defaultTerminalIds });
           setShowForm(false);
           toast.success('Treinamento criado');
         },
@@ -299,7 +305,7 @@ export function TrainingsPage() {
           </div>
         </div>
         {userCanManage && (
-          <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
+          <button onClick={() => { setForm(f => ({ ...f, terminalIds: defaultTerminalIds })); setShowForm(true); }} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
             <Plus size={14} /> Novo Treinamento
           </button>
         )}
@@ -319,14 +325,17 @@ export function TrainingsPage() {
                 className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminal</label>
-              <Select value={form.terminalId || 'global'} onValueChange={v => setForm(f => ({ ...f, terminalId: v === 'global' ? '' : v }))}>
-                <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="global" className="cursor-pointer">Global (todos os terminais)</SelectItem>
-                  {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminais</label>
+              {/* Multi-terminal (registro compartilhado). Item 6: só terminais com o módulo. */}
+              <MultiSelect
+                options={terminals.filter(t => terminalHasSafetySub(t, 'trainings')).map(t => ({ value: t.id, label: t.name }))}
+                selected={form.terminalIds}
+                onChange={ids => setForm(f => ({ ...f, terminalIds: ids }))}
+                placeholder={isAdminUser ? 'Global (todos os terminais)' : 'Selecione o(s) terminal(is)...'}
+                searchPlaceholder="Buscar terminal..."
+                emptyText="Nenhum terminal com o módulo Treinamentos."
+              />
+              {isAdminUser && <p className="text-[10px] text-muted-foreground">Vazio = todos os terminais (global).</p>}
             </div>
             <div className="flex items-end">
               <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer h-10 px-3">
@@ -686,8 +695,8 @@ export function TrainingsPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-bold text-foreground">{training.name}</span>
                           {training.mandatory && <span className="text-[9px] px-1.5 py-0.5 bg-primary/10 text-primary rounded font-bold">OBRIGATÓRIO</span>}
-                          {training.terminalId && (() => { const t = terminals.find(t => t.id === training.terminalId); return t ? <span className="text-[9px] px-1.5 py-0.5 bg-accent text-accent-foreground rounded font-bold">{t.name}</span> : null; })()}
-                          {!training.terminalId && <span className="text-[9px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded font-bold">GLOBAL</span>}
+                          {(training.terminalIds ?? []).map(id => { const t = terminals.find(t => t.id === id); return t ? <span key={id} className="text-[9px] px-1.5 py-0.5 bg-accent text-accent-foreground rounded font-bold">{t.name}</span> : null; })}
+                          {(training.terminalIds ?? []).length === 0 && <span className="text-[9px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded font-bold">GLOBAL</span>}
                         </div>
                         <p className="text-[10px] text-muted-foreground mt-0.5">{training.description}</p>
                         {(training.materialFileName || training.videoUrl) && (

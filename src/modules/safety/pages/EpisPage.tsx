@@ -4,6 +4,8 @@ import { useAuth } from '@/lib/auth-context';
 import { useEpis, useEpiDeliveries, useEpiMutations, useUsers, useTerminals, usePermissions } from '@/api';
 import { EPI, UserEPI, EPIType, EPI_TYPE_LABELS, EPIUsageStatus, EPI_USAGE_LABELS } from '@/lib/types';
 import { canManage, canViewManagement, getVisibleTerminalIds, isTerminalLocked } from '@/lib/access-control';
+import { terminalHasSafetySub } from '@/lib/modules';
+import { MultiSelect } from '@/components/ui/multi-select';
 import {
   HardHat, Plus, Trash2, AlertTriangle, Clock, X, Users, Package, Filter, Search,
   ChevronDown, ChevronUp, CalendarDays, UserCheck, MessageSquare, History, Shield,
@@ -110,7 +112,7 @@ export function EpisPage() {
   const [showAssignForm, setShowAssignForm] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'epi' | 'user'>('epi');
-  const [form, setForm] = useState({ name: '', description: '', epiType: 'outro' as EPIType, expiryDate: '', terminalId: '' });
+  const [form, setForm] = useState({ name: '', description: '', epiType: 'outro' as EPIType, expiryDate: '', terminalIds: [] as string[] });
   const [formError, setFormError] = useState('');
   const [assignForm, setAssignForm] = useState({ userId: '', deliveryDate: '', expiryDate: '', responsible: '', observations: '' });
   const [batchAssign, setBatchAssign] = useState<string | null>(null);
@@ -126,6 +128,9 @@ export function EpisPage() {
     return [];
   }, [user, terminals, permissions]);
   const terminalLocked = isTerminalLocked(user);
+  // "Global" (org-wide) só para admin; não-admin cria no(s) próprio(s) terminal(is) (default = casa).
+  const isAdminUser = user?.role === 'admin';
+  const defaultTerminalIds = isAdminUser ? [] : (user?.linkId ? [user.linkId] : []);
 
   // Filters — auto-lock terminal for non-admin users
   const [filterTerminal, setFilterTerminal] = useState('all');
@@ -221,16 +226,17 @@ export function EpisPage() {
   // Actions
   const addEPI = () => {
     if (!form.name) { setFormError('Informe o nome do EPI.'); return; }
+    if (!isAdminUser && form.terminalIds.length === 0) { setFormError('Selecione ao menos um terminal.'); return; }
     setFormError('');
     create.mutate(
       {
         name: form.name, description: form.description,
         epiType: form.epiType, expiryDate: form.expiryDate || undefined,
-        terminalId: form.terminalId || undefined,
+        terminalIds: form.terminalIds,
       },
       {
         onSuccess: () => {
-          setForm({ name: '', description: '', epiType: 'outro', expiryDate: '', terminalId: '' });
+          setForm({ name: '', description: '', epiType: 'outro', expiryDate: '', terminalIds: defaultTerminalIds });
           setShowForm(false);
           toast.success('EPI cadastrado');
         },
@@ -338,7 +344,7 @@ export function EpisPage() {
           </div>
         </div>
         {userCanManage && (
-          <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
+          <button onClick={() => { setForm(f => ({ ...f, terminalIds: defaultTerminalIds })); setShowForm(true); }} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
             <Plus size={14} /> Novo EPI
           </button>
         )}
@@ -367,14 +373,17 @@ export function EpisPage() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminal</label>
-              <Select value={form.terminalId || 'global'} onValueChange={v => setForm(f => ({ ...f, terminalId: v === 'global' ? '' : v }))}>
-                <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="global" className="cursor-pointer">Global (todos os terminais)</SelectItem>
-                  {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminais</label>
+              {/* Multi-terminal (registro compartilhado). Item 6: só terminais com o módulo. */}
+              <MultiSelect
+                options={terminals.filter(t => terminalHasSafetySub(t, 'epis')).map(t => ({ value: t.id, label: t.name }))}
+                selected={form.terminalIds}
+                onChange={ids => setForm(f => ({ ...f, terminalIds: ids }))}
+                placeholder={isAdminUser ? 'Global (todos os terminais)' : 'Selecione o(s) terminal(is)...'}
+                searchPlaceholder="Buscar terminal..."
+                emptyText="Nenhum terminal com o módulo EPIs."
+              />
+              {isAdminUser && <p className="text-[10px] text-muted-foreground">Vazio = todos os terminais (global).</p>}
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Data de Validade</label>
@@ -778,8 +787,8 @@ export function EpisPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                          <span className="text-sm font-bold text-foreground">{epi.name}</span>
                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{EPI_TYPE_LABELS[epi.epiType]}</span>
-                          {epi.terminalId && (() => { const t = terminals.find(t => t.id === epi.terminalId); return t ? <span className="text-[9px] px-1.5 py-0.5 bg-accent text-accent-foreground rounded font-bold">{t.name}</span> : null; })()}
-                          {!epi.terminalId && <span className="text-[9px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded font-bold">GLOBAL</span>}
+                          {(epi.terminalIds ?? []).map(id => { const t = terminals.find(t => t.id === id); return t ? <span key={id} className="text-[9px] px-1.5 py-0.5 bg-accent text-accent-foreground rounded font-bold">{t.name}</span> : null; })}
+                          {(epi.terminalIds ?? []).length === 0 && <span className="text-[9px] px-1.5 py-0.5 bg-secondary text-muted-foreground rounded font-bold">GLOBAL</span>}
                           {epi.expiryDate && <span className="text-[9px] px-1.5 py-0.5 bg-muted text-muted-foreground rounded font-bold">Validade: {fmtDate(epi.expiryDate)}</span>}
                         </div>
                         <p className="text-[10px] text-muted-foreground mt-0.5">{epi.description}</p>

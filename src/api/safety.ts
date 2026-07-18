@@ -14,7 +14,7 @@ export interface TrainingInput {
   mandatory?: boolean;
   materialFileName?: string;
   videoUrl?: string;
-  terminalId?: string;
+  terminalIds?: string[];
 }
 
 export interface AssignTrainingInput {
@@ -49,7 +49,7 @@ export interface EpiInput {
   description?: string;
   epiType: EPI['epiType'];
   expiryDate?: string;
-  terminalId?: string;
+  terminalIds?: string[];
 }
 
 export interface DeliverEpiInput {
@@ -92,7 +92,7 @@ export interface ComplianceInput {
   expiryDate?: string;
   userId?: string;
   notes?: string;
-  terminalId?: string;
+  terminalIds?: string[];
   area?: string;
   verificationDate?: string;
 }

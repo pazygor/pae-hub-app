@@ -106,6 +106,21 @@ export function isMenuItemAccessible(
   return true;
 }
 
+/**
+ * O terminal tem o sub-módulo de Safety informado? (item 6 — espelha o back.)
+ * Conformidade é derivada: tem `trainings` OU `epis` → tem `compliance`.
+ */
+export function terminalHasSafetySub(
+  terminal: { activeModules?: string[]; activeSafetySubModules?: string[] },
+  sub: SafetySubModule,
+): boolean {
+  const active = terminal.activeModules ?? [];
+  if (!active.includes('operational_safety')) return false;
+  const toggles = terminal.activeSafetySubModules ?? [];
+  if (sub === 'compliance') return toggles.includes('trainings') || toggles.includes('epis');
+  return toggles.includes(sub);
+}
+
 export function getDefaultModules(): ProductModule[] {
   return ['emergency_management', 'operational_safety'];
 }

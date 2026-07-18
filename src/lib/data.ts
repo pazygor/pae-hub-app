@@ -90,10 +90,10 @@ export const INITIAL_DATA: AppData = {
   ],
   chatMessages: [],
   trainings: [
-    { id: 'tr1', name: 'Combate a Incêndio', description: 'Treinamento básico de combate a incêndios em área portuária', mandatory: true, materialFileName: 'manual-combate-incendio.pdf', videoUrl: 'https://www.youtube.com/watch?v=example1', terminalId: 't1' },
-    { id: 'tr2', name: 'Primeiros Socorros', description: 'Atendimento de emergência e primeiros socorros', mandatory: true, videoUrl: 'https://www.youtube.com/watch?v=example2', terminalId: 't1' },
-    { id: 'tr3', name: 'Manuseio de Produtos Químicos', description: 'Procedimentos para manuseio seguro de produtos químicos', mandatory: false, materialFileName: 'guia-produtos-quimicos.pptx', terminalId: 't2' },
-    { id: 'tr4', name: 'Evacuação de Emergência', description: 'Procedimentos de evacuação e uso de rotas de fuga', mandatory: true, terminalId: 't1' },
+    { id: 'tr1', name: 'Combate a Incêndio', description: 'Treinamento básico de combate a incêndios em área portuária', mandatory: true, materialFileName: 'manual-combate-incendio.pdf', videoUrl: 'https://www.youtube.com/watch?v=example1', terminalIds: ['t1'] },
+    { id: 'tr2', name: 'Primeiros Socorros', description: 'Atendimento de emergência e primeiros socorros', mandatory: true, videoUrl: 'https://www.youtube.com/watch?v=example2', terminalIds: ['t1'] },
+    { id: 'tr3', name: 'Manuseio de Produtos Químicos', description: 'Procedimentos para manuseio seguro de produtos químicos', mandatory: false, materialFileName: 'guia-produtos-quimicos.pptx', terminalIds: ['t2'] },
+    { id: 'tr4', name: 'Evacuação de Emergência', description: 'Procedimentos de evacuação e uso de rotas de fuga', mandatory: true, terminalIds: ['t1'] },
   ],
   userTrainings: [
     { id: 'ut1', trainingId: 'tr1', userId: 'u2', completedDate: '2025-06-15', expiryDate: '2026-06-15' },
@@ -102,11 +102,11 @@ export const INITIAL_DATA: AppData = {
     { id: 'ut4', trainingId: 'tr1', userId: 'u3', completedDate: '2025-08-20', expiryDate: '2026-08-20' },
   ],
   epis: [
-    { id: 'epi1', name: 'Capacete de Segurança', description: 'Capacete com aba frontal para proteção contra impactos', epiType: 'proteção_cabeça', expiryDate: null, terminalId: 't1' },
-    { id: 'epi2', name: 'Luvas Nitrílicas', description: 'Luvas de proteção química em nitrila', epiType: 'proteção_mãos', expiryDate: '2026-09-15', terminalId: 't1' },
-    { id: 'epi3', name: 'Respirador PFF2', description: 'Máscara de proteção respiratória PFF2', epiType: 'proteção_respiratória', expiryDate: '2026-05-01', terminalId: 't2' },
-    { id: 'epi4', name: 'Óculos de Proteção', description: 'Óculos ampla visão contra respingos', epiType: 'proteção_ocular', expiryDate: null, terminalId: 't1' },
-    { id: 'epi5', name: 'Roupa de Proteção Química', description: 'Macacão de proteção contra agentes químicos', epiType: 'proteção_corpo', expiryDate: '2026-12-01', terminalId: 't2' },
+    { id: 'epi1', name: 'Capacete de Segurança', description: 'Capacete com aba frontal para proteção contra impactos', epiType: 'proteção_cabeça', expiryDate: null, terminalIds: ['t1'] },
+    { id: 'epi2', name: 'Luvas Nitrílicas', description: 'Luvas de proteção química em nitrila', epiType: 'proteção_mãos', expiryDate: '2026-09-15', terminalIds: ['t1'] },
+    { id: 'epi3', name: 'Respirador PFF2', description: 'Máscara de proteção respiratória PFF2', epiType: 'proteção_respiratória', expiryDate: '2026-05-01', terminalIds: ['t2'] },
+    { id: 'epi4', name: 'Óculos de Proteção', description: 'Óculos ampla visão contra respingos', epiType: 'proteção_ocular', expiryDate: null, terminalIds: ['t1'] },
+    { id: 'epi5', name: 'Roupa de Proteção Química', description: 'Macacão de proteção contra agentes químicos', epiType: 'proteção_corpo', expiryDate: '2026-12-01', terminalIds: ['t2'] },
   ],
   userEPIs: [
     { id: 'ue1', epiId: 'epi1', userId: 'u2', deliveryDate: '2025-03-01', expiryDate: null, responsible: 'Coordenador SST', observations: '', usageStatus: 'em_uso' },
@@ -116,9 +116,9 @@ export const INITIAL_DATA: AppData = {
     { id: 'ue5', epiId: 'epi5', userId: 'u3', deliveryDate: '2025-06-01', expiryDate: '2026-06-01', responsible: 'Supervisor Área', observations: 'Tamanho G', usageStatus: 'em_uso' },
   ],
   complianceItems: [
-    { id: 'ci1', name: 'Inspeção de extintores', responsible: 'Coordenador SST', status: 'conforme', expiryDate: '2026-08-01', userId: null, notes: 'Última inspeção realizada em Jan/2026', terminalId: 't1', area: 'Pátio de contêineres', verificationDate: '2026-01-15' },
-    { id: 'ci2', name: 'Licença ambiental', responsible: 'Gerência Ambiental', status: 'atencao', expiryDate: '2026-05-15', userId: null, notes: 'Renovação em andamento', terminalId: 't2', area: 'Administração', verificationDate: '2026-03-01' },
-    { id: 'ci3', name: 'Certificação NR-29', responsible: 'Supervisor Portuário', status: 'nao_conforme', expiryDate: '2026-01-10', userId: 'u2', notes: 'Aguardando agendamento', terminalId: 't1', area: 'Berço 101', verificationDate: null },
+    { id: 'ci1', name: 'Inspeção de extintores', responsible: 'Coordenador SST', status: 'conforme', expiryDate: '2026-08-01', userId: null, notes: 'Última inspeção realizada em Jan/2026', terminalIds: ['t1'], area: 'Pátio de contêineres', verificationDate: '2026-01-15' },
+    { id: 'ci2', name: 'Licença ambiental', responsible: 'Gerência Ambiental', status: 'atencao', expiryDate: '2026-05-15', userId: null, notes: 'Renovação em andamento', terminalIds: ['t2'], area: 'Administração', verificationDate: '2026-03-01' },
+    { id: 'ci3', name: 'Certificação NR-29', responsible: 'Supervisor Portuário', status: 'nao_conforme', expiryDate: '2026-01-10', userId: 'u2', notes: 'Aguardando agendamento', terminalIds: ['t1'], area: 'Berço 101', verificationDate: null },
   ],
   terminalModules: [
     { terminalId: 't1', activeModules: ['emergency_management', 'operational_safety'] },

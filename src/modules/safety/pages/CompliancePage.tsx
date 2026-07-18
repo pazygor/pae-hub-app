@@ -4,7 +4,8 @@ import { useAuth } from '@/lib/auth-context';
 import { useCompliance, useComplianceMutations, useEpis, useTrainings, useTrainingAssignments, useEpiDeliveries, useUsers, useTerminals, usePermissions } from '@/api';
 import { ComplianceItem, ComplianceStatus } from '@/lib/types';
 import { canManage, isTerminalLocked } from '@/lib/access-control';
-import { isMenuItemAccessible, getDefaultModules, getDefaultSafetySubModules, ProductModule, SafetySubModule } from '@/lib/modules';
+import { isMenuItemAccessible, getDefaultModules, getDefaultSafetySubModules, terminalHasSafetySub, ProductModule, SafetySubModule } from '@/lib/modules';
+import { MultiSelect } from '@/components/ui/multi-select';
 import {
   CheckCircle2, XCircle, AlertTriangle, Filter, Search, AlertCircle, Plus, X, Trash2,
   ClipboardCheck, ChevronDown, ChevronUp, Clock, UserCheck, FileText, Shield, Loader2
@@ -64,6 +65,9 @@ export function CompliancePage() {
     return [];
   }, [user, terminals, permissions]);
   const terminalLocked = isTerminalLocked(user);
+  // "Nenhum" (sem terminal) só para admin; não-admin cria no(s) próprio(s) terminal(is) (default = casa).
+  const isAdminUser = user?.role === 'admin';
+  const defaultTerminalIds = isAdminUser ? [] : (user?.linkId ? [user.linkId] : []);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<SafetyStatus | 'all'>('all');
@@ -72,7 +76,7 @@ export function CompliancePage() {
   const effectiveTerminalFilter = terminalLocked && visibleTerminalIds.length === 1 ? visibleTerminalIds[0] : filterTerminal;
   const [activeTab, setActiveTab] = useState<ViewTab>(hasIntegration ? 'integrated' : 'manual');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', responsible: '', status: 'conforme' as ComplianceStatus, expiryDate: '', userId: '', notes: '', terminalId: '', area: '', verificationDate: '' });
+  const [form, setForm] = useState({ name: '', responsible: '', status: 'conforme' as ComplianceStatus, expiryDate: '', userId: '', notes: '', terminalIds: [] as string[], area: '', verificationDate: '' });
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
 
   // ===== INTEGRATED DATA (from trainings & EPIs) =====
@@ -115,12 +119,13 @@ export function CompliancePage() {
   const manualItems = complianceItems;
   const filteredManual = useMemo(() => {
     return manualItems.filter(item => {
-      // Terminal isolation for manual items
-      if (item.terminalId && !visibleTerminalIds.includes(item.terminalId)) return false;
+      // Terminal isolation: item com terminais específicos precisa cruzar com os visíveis (vazio = global, sempre visível).
+      const itemTerminals = item.terminalIds ?? [];
+      if (itemTerminals.length > 0 && !itemTerminals.some(id => visibleTerminalIds.includes(id))) return false;
       const status = COMPLIANCE_STATUS_MAP[item.status];
       if (searchTerm && !item.name.toLowerCase().includes(searchTerm.toLowerCase()) && !item.responsible.toLowerCase().includes(searchTerm.toLowerCase())) return false;
       if (filterStatus !== 'all' && status !== filterStatus) return false;
-      if (effectiveTerminalFilter !== 'all' && item.terminalId !== effectiveTerminalFilter) return false;
+      if (effectiveTerminalFilter !== 'all' && !itemTerminals.includes(effectiveTerminalFilter)) return false;
       return true;
     });
   }, [manualItems, searchTerm, filterStatus, effectiveTerminalFilter, visibleTerminalIds]);
@@ -140,17 +145,18 @@ export function CompliancePage() {
   // Actions
   const addItem = () => {
     if (!form.name) { toast.error('Informe o nome do item'); return; }
+    if (!isAdminUser && form.terminalIds.length === 0) { toast.error('Selecione ao menos um terminal'); return; }
     create.mutate(
       {
         name: form.name, responsible: form.responsible,
         status: form.status, expiryDate: form.expiryDate || undefined,
         userId: form.userId || undefined, notes: form.notes || undefined,
-        terminalId: form.terminalId || undefined, area: form.area || undefined,
+        terminalIds: form.terminalIds, area: form.area || undefined,
         verificationDate: form.verificationDate || undefined,
       },
       {
         onSuccess: () => {
-          setForm({ name: '', responsible: '', status: 'conforme', expiryDate: '', userId: '', notes: '', terminalId: '', area: '', verificationDate: '' });
+          setForm({ name: '', responsible: '', status: 'conforme', expiryDate: '', userId: '', notes: '', terminalIds: defaultTerminalIds, area: '', verificationDate: '' });
           setShowForm(false);
           toast.success('Item de conformidade criado');
         },
@@ -194,7 +200,7 @@ export function CompliancePage() {
           </div>
         </div>
         {canManage(user) && (
-          <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
+          <button onClick={() => { setForm(f => ({ ...f, terminalIds: defaultTerminalIds })); setShowForm(true); }} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
             <Plus size={14} /> Novo Item
           </button>
         )}
@@ -232,14 +238,17 @@ export function CompliancePage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminal</label>
-              <Select value={form.terminalId || 'none'} onValueChange={v => setForm(f => ({ ...f, terminalId: v === 'none' ? '' : v }))}>
-                <SelectTrigger className="cursor-pointer"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none" className="cursor-pointer">Nenhum</SelectItem>
-                  {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminais</label>
+              {/* Multi-terminal (registro compartilhado). Item 6: só terminais com Conformidade (derivada). */}
+              <MultiSelect
+                options={terminals.filter(t => terminalHasSafetySub(t, 'compliance')).map(t => ({ value: t.id, label: t.name }))}
+                selected={form.terminalIds}
+                onChange={ids => setForm(f => ({ ...f, terminalIds: ids }))}
+                placeholder={isAdminUser ? 'Nenhum (nível da empresa)' : 'Selecione o(s) terminal(is)...'}
+                searchPlaceholder="Buscar terminal..."
+                emptyText="Nenhum terminal com Conformidade."
+              />
+              {isAdminUser && <p className="text-[10px] text-muted-foreground">Vazio = sem terminal específico (nível da empresa).</p>}
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Área</label>
@@ -483,10 +492,10 @@ export function CompliancePage() {
                           <UserCheck size={11} className="shrink-0" />
                           <span>{item.responsible || '—'}</span>
                         </div>
-                        {item.terminalId && (
+                        {(item.terminalIds ?? []).length > 0 && (
                           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                             <Shield size={11} className="shrink-0" />
-                            <span>{terminals.find(t => t.id === item.terminalId)?.name || '—'}</span>
+                            <span>{(item.terminalIds ?? []).map(id => terminals.find(t => t.id === id)?.name).filter(Boolean).join(', ') || '—'}</span>
                           </div>
                         )}
                         {item.area && (

@@ -224,7 +224,7 @@ export interface Training {
   mandatory: boolean;
   materialFileName?: string;
   videoUrl?: string;
-  terminalId?: string;
+  terminalIds?: string[]; // terminais a que se aplica; vazio = global (todos)
 }
 
 export interface UserTraining {
@@ -267,7 +267,7 @@ export interface EPI {
   description: string;
   epiType: EPIType;
   expiryDate: string | null;
-  terminalId?: string;
+  terminalIds?: string[]; // terminais a que se aplica; vazio = global (todos)
 }
 
 export interface UserEPI {
@@ -300,7 +300,7 @@ export interface ComplianceItem {
   expiryDate: string | null;
   userId: string | null;
   notes: string;
-  terminalId: string | null;
+  terminalIds?: string[]; // terminais a que se aplica; vazio = global (nenhum específico)
   area: string;
   verificationDate: string | null;
 }
