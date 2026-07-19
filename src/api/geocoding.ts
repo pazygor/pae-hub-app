@@ -23,10 +23,24 @@ export interface CepLookup {
   state?: string;
 }
 
+/** Endereço estruturado da geocodificação reversa (PIN manual → coordenadas → endereço). */
+export interface ReverseAddress {
+  cep?: string;
+  street?: string;
+  number?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+}
+
 export const geocodingApi = {
   /** Localizar: resolve lat/lng do endereço via back (cascata BrasilAPI/Awesome/Nominatim). */
   coordinates: (input: GeocodeInput): Promise<Coordinates | null> =>
     http.post<Coordinates | null>('/geocoding/coordinates', input),
+
+  /** PIN manual: resolve o endereço estruturado a partir de lat/lng (Nominatim reverse). */
+  address: (input: Coordinates): Promise<ReverseAddress | null> =>
+    http.post<ReverseAddress | null>('/geocoding/address', input),
 };
 
 /** Consulta CEP no BrasilAPI (client-side, CORS liberado) para preencher o endereço. */
