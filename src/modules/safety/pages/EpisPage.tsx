@@ -206,11 +206,13 @@ export function EpisPage() {
   const soonCount = activeAssignments.filter(c => c.status === 'soon').length;
   const expiredCount = activeAssignments.filter(c => c.status === 'expired').length;
 
-  // Users without any active EPI
+  // Users without any active EPI — só usuários lotados nos terminais visíveis.
+  // Exclui admin (sem terminal) e usuários de entidade, cujo linkId aponta para a
+  // entidade e não para um terminal: o terminal não entrega EPI a agente externo.
   const usersWithoutEPI = useMemo(() => {
     const usersWithActive = new Set(activeAssignments.map(a => a.userId));
-    return users.filter(u => !usersWithActive.has(u.id) && (u.role === 'terminal' || u.role === 'entity'));
-  }, [users, activeAssignments]);
+    return users.filter(u => !!u.linkId && visibleTerminalIds.includes(u.linkId) && !usersWithActive.has(u.id));
+  }, [users, activeAssignments, visibleTerminalIds]);
 
   // Charts
   // A cor vai em `fill`: é dela que o recharts monta o payload da legenda do <Pie>.
@@ -526,7 +528,7 @@ export function EpisPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <div className="bg-card border rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Total EPIs</p>
-          <p className="text-xl font-mono font-bold text-foreground">{epis.length}</p>
+          <p className="text-xl font-mono font-bold text-foreground">{scopedEpis.length}</p>
         </div>
         <div className="bg-card border border-success/20 rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Em Uso</p>

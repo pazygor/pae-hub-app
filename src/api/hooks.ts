@@ -262,6 +262,7 @@ export function useTrainingMutations() {
   };
   return {
     create: useMutation({ mutationFn: (input: TrainingInput) => trainingsApi.create(input), onSuccess }),
+    update: useMutation({ mutationFn: (v: { id: string; input: Partial<TrainingInput> }) => trainingsApi.update(v.id, v.input), onSuccess }),
     remove: useMutation({ mutationFn: (id: string) => trainingsApi.remove(id), onSuccess }),
     assign: useMutation({ mutationFn: (v: { id: string; input: AssignTrainingInput }) => trainingsApi.assign(v.id, v.input), onSuccess }),
     removeAssignment: useMutation({ mutationFn: (assignmentId: string) => trainingsApi.removeAssignment(assignmentId), onSuccess }),

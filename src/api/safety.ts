@@ -35,6 +35,8 @@ export const trainingsApi = {
   assignments: async (): Promise<UserTraining[]> =>
     (await http.get<any[]>('/trainings/assignments')).map(adaptUserTraining),
   create: (input: TrainingInput): Promise<Training> => http.post<Training>('/trainings', input),
+  update: (id: string, input: Partial<TrainingInput>): Promise<Training> =>
+    http.put<Training>(`/trainings/${id}`, input),
   remove: (id: string): Promise<unknown> => http.del(`/trainings/${id}`),
   assign: async (id: string, input: AssignTrainingInput): Promise<UserTraining[]> =>
     (await http.post<any[]>(`/trainings/${id}/assignments`, input)).map(adaptUserTraining),

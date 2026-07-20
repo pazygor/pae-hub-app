@@ -1,6 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
+import { Training } from '@/lib/types';
 import { canManage, isTerminalLocked } from '@/lib/access-control';
 import { terminalHasSafetySub } from '@/lib/modules';
 import { MultiSelect } from '@/components/ui/multi-select';
@@ -8,12 +10,16 @@ import { useTrainings, useTrainingAssignments, useTrainingMutations, useUsers, u
 import {
   GraduationCap, Plus, Trash2, CheckCircle, AlertTriangle, Clock, X, Users, UserPlus,
   Filter, Search, ChevronDown, ChevronUp, CalendarDays, Shield, FileText, Award,
-  Video, Upload, ExternalLink, Paperclip, CheckSquare2, Loader2
+  Video, Upload, ExternalLink, Paperclip, CheckSquare2, Loader2, Pencil
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { PieTooltipContent } from '@/components/common/PieTooltip';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { AssignUsersModal } from '../components/AssignUsersModal';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 
 const COLORS = {
   valid: 'hsl(142, 71%, 45%)',
@@ -56,14 +62,21 @@ function statusBarColor(status: TrainingStatus) {
 
 export function TrainingsPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { data: trainings = [] } = useTrainings();
   const { data: userTrainings = [] } = useTrainingAssignments();
   const { data: users = [] } = useUsers();
   const { data: terminals = [] } = useTerminals();
   const { data: permissions = [] } = usePermissions();
-  const { create, remove: removeTrainingMut, assign, removeAssignment } = useTrainingMutations();
+  const { create, update, remove: removeTrainingMut, assign, removeAssignment } = useTrainingMutations();
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
   const [showForm, setShowForm] = useState(false);
+  // null = cadastrando; id = editando o treinamento correspondente.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [blockedTraining, setBlockedTraining] = useState<Training | null>(null);
+  // O formulário fica no topo: ao abrir (sobretudo ao editar um card lá embaixo)
+  // levamos o usuário até ele, senão parece que o clique não fez nada.
+  const formRef = useRef<HTMLDivElement>(null);
   const [showAssignForm, setShowAssignForm] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'user' | 'training'>('training');
@@ -88,10 +101,38 @@ export function TrainingsPage() {
   // Filters — auto-lock terminal for non-admin users
   const [filterTerminal, setFilterTerminal] = useState('all');
   const effectiveTerminalFilter = terminalLocked && visibleTerminalIds.length === 1 ? visibleTerminalIds[0] : filterTerminal;
+
+  // Catálogo visível. Treinamento com `terminalIds` vazio é global (vale para
+  // todos), por isso aparece em qualquer terminal. Isolamento por terminal —
+  // base de TODOS os indicadores, para o card nunca contar o que a tela não mostra.
+  const scopedTrainings = useMemo(
+    () => trainings.filter(t => {
+      const ids = t.terminalIds ?? [];
+      return ids.length === 0 || ids.some(id => visibleTerminalIds.includes(id));
+    }),
+    [trainings, visibleTerminalIds],
+  );
+  // Usuários lotados nos terminais visíveis. Exclui admin (sem terminal) e
+  // usuários de entidade, cujo linkId aponta para a entidade e não para um terminal.
+  const scopedUsers = useMemo(
+    () => users.filter(u => !!u.linkId && visibleTerminalIds.includes(u.linkId)),
+    [users, visibleTerminalIds],
+  );
   const [filterStatus, setFilterStatus] = useState<'all' | TrainingStatus>('all');
   const [filterMandatory, setFilterMandatory] = useState<'all' | 'yes' | 'no'>('all');
   const [searchUser, setSearchUser] = useState('');
   const activeFilterCount = [searchUser, filterStatus !== 'all', filterMandatory !== 'all', filterTerminal !== 'all'].filter(Boolean).length;
+
+  // Catálogo do nível 2 (isolamento) + os filtros da tela — é o que a lista mostra.
+  const filteredTrainings = useMemo(
+    () => scopedTrainings.filter(t => {
+      if (filterMandatory !== 'all' && (filterMandatory === 'yes' ? !t.mandatory : t.mandatory)) return false;
+      if (effectiveTerminalFilter === 'all') return true;
+      const ids = t.terminalIds ?? [];
+      return ids.length === 0 || ids.includes(effectiveTerminalFilter);
+    }),
+    [scopedTrainings, filterMandatory, effectiveTerminalFilter],
+  );
 
   // Classified — scoped to visible terminals
   const classified = useMemo(() => {
@@ -124,15 +165,16 @@ export function TrainingsPage() {
   // Pending: mandatory trainings not assigned to any user or expired
   const pendingCount = useMemo(() => {
     let count = 0;
-    const mandatoryTrainings = trainings.filter(t => t.mandatory);
-    for (const u of users) {
+    // Só o catálogo e os usuários que este usuário enxerga.
+    const mandatoryTrainings = scopedTrainings.filter(t => t.mandatory);
+    for (const u of scopedUsers) {
       for (const t of mandatoryTrainings) {
         const has = userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired');
         if (!has) count++;
       }
     }
     return count;
-  }, [trainings, users, userTrainings]);
+  }, [scopedTrainings, scopedUsers, userTrainings]);
 
   // Charts
   // A cor vai em `fill`: é dela que o recharts monta o payload da legenda do <Pie>.
@@ -220,18 +262,91 @@ export function TrainingsPage() {
     return [...userGroups, ...additionalUsers];
   }, [userGroups, users, trainings, userTrainings, filterTerminal, searchUser]);
 
+  useEffect(() => {
+    if (showForm) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [showForm, editingId]);
+
+  // Um treinamento é editável enquanto pelo menos UM dos seus terminais tiver o
+  // módulo (global sempre editável). Se todos perderam, o registro está órfão e
+  // fica só-leitura até o módulo ser reativado. Espelha o back.
+  const trainingIsEditable = (t: Training) => {
+    const ids = t.terminalIds ?? [];
+    if (ids.length === 0) return true;
+    return ids.some(id => {
+      const term = terminals.find(x => x.id === id);
+      return term ? terminalHasSafetySub(term, 'trainings') : false;
+    });
+  };
+  const blockedTerminalNames = (blockedTraining?.terminalIds ?? [])
+    .map(id => terminals.find(t => t.id === id)?.name)
+    .filter(Boolean)
+    .join(', ');
+
+  // Atribuição: só usuários dos terminais a que o treinamento se aplica
+  // (global = todos os terminais visíveis).
+  const assignScope = useMemo(() => {
+    const training = trainings.find(t => t.id === batchAssign);
+    const ids = training?.terminalIds ?? [];
+    const scopeIds = !training
+      ? []
+      : ids.length === 0
+        ? visibleTerminalIds
+        : ids.filter(id => visibleTerminalIds.includes(id));
+    return {
+      isGlobal: !!training && ids.length === 0,
+      users: users.filter(u => !!u.linkId && scopeIds.includes(u.linkId)),
+      terminals: terminals.filter(t => scopeIds.includes(t.id)),
+    };
+  }, [batchAssign, trainings, users, terminals, visibleTerminalIds]);
+
   // Actions
-  const addTraining = () => {
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setFormError('');
+    setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalIds: defaultTerminalIds });
+  };
+
+  const startCreate = () => {
+    setEditingId(null);
+    setFormError('');
+    setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalIds: defaultTerminalIds });
+    setShowForm(true);
+  };
+
+  const startEdit = (t: Training) => {
+    setEditingId(t.id);
+    setFormError('');
+    setForm({
+      name: t.name,
+      description: t.description ?? '',
+      mandatory: t.mandatory,
+      materialFileName: t.materialFileName ?? '',
+      videoUrl: t.videoUrl ?? '',
+      terminalIds: t.terminalIds ?? [],
+    });
+    setShowForm(true);
+  };
+
+  const saveTraining = () => {
     if (!form.name) { setFormError('Informe o nome do treinamento.'); return; }
     if (!isAdminUser && form.terminalIds.length === 0) { setFormError('Selecione ao menos um terminal.'); return; }
     setFormError('');
+    const input = {
+      name: form.name, description: form.description, mandatory: form.mandatory,
+      materialFileName: form.materialFileName || undefined,
+      videoUrl: form.videoUrl || undefined,
+      terminalIds: form.terminalIds,
+    };
+    if (editingId) {
+      update.mutate({ id: editingId, input }, {
+        onSuccess: () => { closeForm(); toast.success('Treinamento atualizado'); },
+        onError,
+      });
+      return;
+    }
     create.mutate(
-      {
-        name: form.name, description: form.description, mandatory: form.mandatory,
-        materialFileName: form.materialFileName || undefined,
-        videoUrl: form.videoUrl || undefined,
-        terminalIds: form.terminalIds,
-      },
+      input,
       {
         onSuccess: () => {
           setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalIds: defaultTerminalIds });
@@ -307,7 +422,7 @@ export function TrainingsPage() {
           </div>
         </div>
         {userCanManage && (
-          <button onClick={() => { setForm(f => ({ ...f, terminalIds: defaultTerminalIds })); setShowForm(true); }} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
+          <button onClick={startCreate} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
             <Plus size={14} /> Novo Treinamento
           </button>
         )}
@@ -315,10 +430,10 @@ export function TrainingsPage() {
 
       {/* Add Training Form */}
       {showForm && (
-        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+        <div ref={formRef} className="bg-card border border-border rounded-xl p-4 space-y-4 scroll-mt-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-foreground">Cadastrar Novo Treinamento</h3>
-            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X size={16} /></button>
+            <h3 className="text-sm font-bold text-foreground">{editingId ? 'Editar Treinamento' : 'Cadastrar Novo Treinamento'}</h3>
+            <button onClick={closeForm} className="text-muted-foreground hover:text-foreground cursor-pointer"><X size={16} /></button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1.5">
@@ -328,9 +443,16 @@ export function TrainingsPage() {
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminais</label>
-              {/* Multi-terminal (registro compartilhado). Item 6: só terminais com o módulo. */}
+              {/* Multi-terminal (registro compartilhado). Item 6: só terminais com o módulo —
+                  mais os já vinculados, senão o vínculo ficaria invisível na edição e a tela
+                  mostraria "Global" por engano. */}
               <MultiSelect
-                options={terminals.filter(t => terminalHasSafetySub(t, 'trainings')).map(t => ({ value: t.id, label: t.name }))}
+                options={terminals
+                  .filter(t => terminalHasSafetySub(t, 'trainings') || form.terminalIds.includes(t.id))
+                  .map(t => ({
+                    value: t.id,
+                    label: terminalHasSafetySub(t, 'trainings') ? t.name : `${t.name} (módulo inativo)`,
+                  }))}
                 selected={form.terminalIds}
                 onChange={ids => setForm(f => ({ ...f, terminalIds: ids }))}
                 placeholder={isAdminUser ? 'Global (todos os terminais)' : 'Selecione o(s) terminal(is)...'}
@@ -375,10 +497,10 @@ export function TrainingsPage() {
           <p className="text-[10px] text-muted-foreground">Após salvar, use o botão <strong>"Atribuir a Usuários"</strong> para delegar a usuários específicos.</p>
           {formError && <p className="text-xs text-primary font-bold">{formError}</p>}
           <div className="flex gap-2 pt-1">
-            <button onClick={addTraining} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity">
-              {create.isPending && <Loader2 size={12} className="animate-spin" />} Salvar Treinamento
+            <button onClick={saveTraining} disabled={create.isPending || update.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity">
+              {(create.isPending || update.isPending) && <Loader2 size={12} className="animate-spin" />} {editingId ? 'Salvar alterações' : 'Salvar Treinamento'}
             </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
+            <button onClick={closeForm} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
           </div>
         </div>
       )}
@@ -387,8 +509,8 @@ export function TrainingsPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
         <div className="bg-card border rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Total</p>
-          <p className="text-xl font-mono font-bold text-foreground">{trainings.length}</p>
-          <p className="text-[10px] text-muted-foreground">{trainings.filter(t => t.mandatory).length} obrigatórios</p>
+          <p className="text-xl font-mono font-bold text-foreground">{scopedTrainings.length}</p>
+          <p className="text-[10px] text-muted-foreground">{scopedTrainings.filter(t => t.mandatory).length} obrigatórios</p>
         </div>
         <div className="bg-card border border-success/20 rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Concluídos</p>
@@ -682,8 +804,7 @@ export function TrainingsPage() {
       {/* ===== TRAINING VIEW ===== */}
       {viewMode === 'training' && (
         <div className="space-y-4">
-          {trainings
-            .filter(t => filterMandatory === 'all' || (filterMandatory === 'yes' ? t.mandatory : !t.mandatory))
+          {filteredTrainings
             .map(training => {
               const assignments = filteredAssignments.filter(a => a.trainingId === training.id);
               const expCount = assignments.filter(a => a.status === 'expired').length;
@@ -725,7 +846,18 @@ export function TrainingsPage() {
                           <UserPlus size={12} /> Atribuir a Usuários
                         </button>
                       )}
-                      {userCanManage && <button onClick={() => removeTraining(training.id)} className="p-1.5 text-destructive/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 size={14} /></button>}
+                      {userCanManage && (
+                        <button
+                          onClick={() => (trainingIsEditable(training) ? startEdit(training) : setBlockedTraining(training))}
+                          title={trainingIsEditable(training) ? 'Editar treinamento' : 'Edição indisponível — módulo inativo no terminal'}
+                          className={`p-1.5 rounded-lg transition-colors ${trainingIsEditable(training)
+                            ? 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                            : 'text-muted-foreground/40 hover:bg-secondary'}`}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      )}
+                      {userCanManage && <button onClick={() => removeTraining(training.id)} title="Remover treinamento" className="p-1.5 text-destructive/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 size={14} /></button>}
                     </div>
                   </div>
 
@@ -765,11 +897,47 @@ export function TrainingsPage() {
               );
             })}
 
-          {trainings.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground text-sm">Nenhum treinamento cadastrado.</div>
+          {filteredTrainings.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground text-sm">
+              {scopedTrainings.length === 0
+                ? 'Nenhum treinamento cadastrado.'
+                : 'Nenhum treinamento corresponde aos filtros aplicados.'}
+            </div>
           )}
         </div>
       )}
+
+      {/* Edição bloqueada: nenhum terminal do treinamento tem mais o módulo (registro órfão). */}
+      <AlertDialog open={!!blockedTraining} onOpenChange={open => { if (!open) setBlockedTraining(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="p-1.5 bg-warning/10 rounded-lg"><Shield size={16} className="text-warning" /></span>
+              Edição indisponível
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              O treinamento <strong className="text-foreground font-semibold">{blockedTraining?.name}</strong> pertence
+              {blockedTerminalNames ? <> a <strong className="text-foreground font-semibold">{blockedTerminalNames}</strong></> : ' a um terminal'},
+              que não tem mais o módulo <strong className="text-foreground font-semibold">Treinamentos</strong> habilitado.
+              O registro fica visível apenas para consulta.
+              {isAdminUser
+                ? ' Para voltar a editá-lo, reative o módulo Treinamentos desse terminal em Pacotes do Sistema.'
+                : ' Para voltar a editá-lo, valide com o comercial a ativação do módulo de Treinamentos para esse terminal.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Fechar</AlertDialogCancel>
+            {isAdminUser && (
+              <AlertDialogAction
+                onClick={() => navigate('/pacotes-do-sistema')}
+                className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Ir para Pacotes do Sistema
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Assign Users Modal */}
       {batchAssign && (
@@ -777,10 +945,14 @@ export function TrainingsPage() {
           open={!!batchAssign}
           onClose={() => setBatchAssign(null)}
           title={`Atribuir Treinamento`}
-          description={`Selecione os usuários que receberão o treinamento "${trainings.find(t => t.id === batchAssign)?.name || ''}".`}
+          description={`Selecione os usuários que receberão o treinamento "${trainings.find(t => t.id === batchAssign)?.name || ''}". ${
+            assignScope.isGlobal
+              ? 'Treinamento global — disponível para usuários de todos os terminais.'
+              : `Apenas usuários de: ${assignScope.terminals.map(t => t.name).join(', ') || '—'}.`
+          }`}
           confirmLabel="Confirmar Atribuição"
-          users={users}
-          terminals={terminals}
+          users={assignScope.users}
+          terminals={assignScope.terminals}
           alreadyAssignedIds={new Set(userTrainings.filter(ut => ut.trainingId === batchAssign).map(ut => ut.userId))}
           onConfirm={(userIds) => batchAssignTraining(batchAssign, userIds)}
         />
