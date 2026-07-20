@@ -16,6 +16,7 @@ import { entityNotificationsApi } from './entity-notifications';
 import { chatApi } from './chat';
 import { risksApi, RiskInput, plansApi, PlanInput, mapElementsApi, MapElementInput, documentsApi, DocumentInput } from './pae-resources';
 import { trainingsApi, TrainingInput, AssignTrainingInput, episApi, EpiInput, DeliverEpiInput, complianceApi, ComplianceInput } from './safety';
+import { auditApi, AccessFilters, ActivityFilters } from './audit';
 import { EPIUsageStatus } from '@/lib/types';
 
 const TERMINALS_KEY = ['terminals'];
@@ -365,4 +366,19 @@ export function useNotificationRuleMutations() {
     setMandatory: useMutation({ mutationFn: (v: { id: string; mandatory: boolean }) => notificationRulesApi.setMandatory(v.id, v.mandatory), onSuccess }),
     remove: useMutation({ mutationFn: (id: string) => notificationRulesApi.remove(id), onSuccess }),
   };
+}
+
+/* ── Central de Auditoria (itens 1 + 2) — admin ────────────────────────────── */
+
+export function useAccessSessions(filters: AccessFilters) {
+  return useQuery({ queryKey: ['audit', 'access', filters], queryFn: () => auditApi.accessList(filters) });
+}
+export function useAccessStats(range: { from?: string; to?: string }) {
+  return useQuery({ queryKey: ['audit', 'access-stats', range], queryFn: () => auditApi.accessStats(range) });
+}
+export function useActivity(filters: ActivityFilters) {
+  return useQuery({ queryKey: ['audit', 'activity', filters], queryFn: () => auditApi.activityList(filters) });
+}
+export function useActivityStats(range: { from?: string; to?: string }) {
+  return useQuery({ queryKey: ['audit', 'activity-stats', range], queryFn: () => auditApi.activityStats(range) });
 }

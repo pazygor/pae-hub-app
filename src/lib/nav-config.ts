@@ -7,7 +7,7 @@
 import {
   LayoutDashboard, Ship, Shield, Users, Lock, AlertTriangle, FileText, Siren,
   MapPin, Radio, FolderOpen, Info, IdCard, ShieldCheck, Bell, Activity,
-  GraduationCap, HardHat, ClipboardCheck, Puzzle, UserCircle, Network, Brain,
+  GraduationCap, HardHat, ClipboardCheck, Puzzle, UserCircle, Network, Brain, History,
 } from 'lucide-react';
 import { UserRole, AppUser } from '@/lib/types';
 
@@ -49,6 +49,7 @@ export const NAV_CONFIG: NavItem[] = [
   { id: 'compliance', path: '/seguranca/conformidade', label: 'Conformidade', headerLabel: 'Centro de Segurança Operacional', icon: ClipboardCheck, roles: ['admin', 'terminal'], section: 'Segurança Operacional' },
   { id: 'modules', path: '/pacotes-do-sistema', label: 'Pacotes do Sistema', icon: Puzzle, roles: ['admin'] },
   { id: 'org-chart', path: '/organograma', label: 'Organograma', icon: Network, roles: ['admin'] },
+  { id: 'audit', path: '/auditoria', label: 'Auditoria', headerLabel: 'Central de Auditoria', icon: History, roles: ['admin'] },
   { id: 'about', path: '/sobre', label: 'Sobre o Sistema', icon: Info, roles: ['admin', 'terminal', 'entity'] },
 ];
 

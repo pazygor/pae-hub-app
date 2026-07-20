@@ -40,6 +40,7 @@ const AccessLevelsPage = lazy(() => import('@/modules/admin/pages/AccessLevelsPa
 const NotificationRulesPage = lazy(() => import('@/modules/admin/pages/NotificationRulesPage').then(m => ({ default: m.NotificationRulesPage })));
 const ModulesPage = lazy(() => import('@/modules/admin/pages/ModulesPage').then(m => ({ default: m.ModulesPage })));
 const OrgChartPage = lazy(() => import('@/modules/admin/pages/OrgChartPage').then(m => ({ default: m.OrgChartPage })));
+const AuditCenterPage = lazy(() => import('@/modules/admin/pages/AuditCenterPage').then(m => ({ default: m.AuditCenterPage })));
 const AboutPage = lazy(() => import('@/modules/admin/pages/AboutPage').then(m => ({ default: m.AboutPage })));
 
 /**
@@ -121,6 +122,7 @@ export function AppRouter() {
                 <Route path="/acionamento-entidades" element={<NotificationRulesPage />} />
                 <Route path="/pacotes-do-sistema" element={<ModulesPage />} />
                 <Route path="/organograma" element={<OrgChartPage />} />
+                <Route path="/auditoria" element={<AuditCenterPage />} />
                 <Route path="/sobre" element={<AboutPage />} />
 
                 {/* 404 interno do shell (rota autenticada desconhecida) */}
