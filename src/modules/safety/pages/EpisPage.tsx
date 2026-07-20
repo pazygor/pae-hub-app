@@ -272,6 +272,26 @@ export function EpisPage() {
       return t ? terminalHasSafetySub(t, 'epis') : false;
     });
   };
+  // Entrega de EPI: só faz sentido para usuários dos terminais a que o EPI se
+  // aplica. EPI global (sem terminal) vale para todos os terminais visíveis.
+  // Sem isso, o modal ofereceria usuários de terminais que nem têm o EPI —
+  // e a entrega resultante nunca fecharia com o card, que é filtrado pelo
+  // terminal do EPI enquanto a entrega é filtrada pelo terminal do usuário.
+  const assignScope = useMemo(() => {
+    const epi = epis.find(e => e.id === batchAssign);
+    const ids = epi?.terminalIds ?? [];
+    const scopeIds = !epi
+      ? []
+      : ids.length === 0
+        ? visibleTerminalIds
+        : ids.filter(id => visibleTerminalIds.includes(id));
+    return {
+      isGlobal: !!epi && ids.length === 0,
+      users: users.filter(u => !!u.linkId && scopeIds.includes(u.linkId)),
+      terminals: terminals.filter(t => scopeIds.includes(t.id)),
+    };
+  }, [batchAssign, epis, users, terminals, visibleTerminalIds]);
+
   const [blockedEpi, setBlockedEpi] = useState<EPI | null>(null);
   const blockedTerminalNames = (blockedEpi?.terminalIds ?? [])
     .map(id => terminals.find(t => t.id === id)?.name)
@@ -1005,10 +1025,14 @@ export function EpisPage() {
           open={!!batchAssign}
           onClose={() => setBatchAssign(null)}
           title="Entregar EPI"
-          description={`Selecione os usuários que receberão o EPI "${epis.find(e => e.id === batchAssign)?.name || ''}".`}
+          description={`Selecione os usuários que receberão o EPI "${epis.find(e => e.id === batchAssign)?.name || ''}". ${
+            assignScope.isGlobal
+              ? 'EPI global — disponível para usuários de todos os terminais.'
+              : `Apenas usuários de: ${assignScope.terminals.map(t => t.name).join(', ') || '—'}.`
+          }`}
           confirmLabel="Confirmar Entrega"
-          users={users}
-          terminals={terminals}
+          users={assignScope.users}
+          terminals={assignScope.terminals}
           alreadyAssignedIds={new Set(userEPIs.filter(ue => ue.epiId === batchAssign && ue.usageStatus !== 'substituido' && ue.usageStatus !== 'devolvido').map(ue => ue.userId))}
           onConfirm={(userIds) => batchAssignEPI(batchAssign, userIds)}
         />
