@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useCompliance, useComplianceMutations, useEpis, useTrainings, useTrainingAssignments, useEpiDeliveries, useUsers, useTerminals, usePermissions } from '@/api';
 import { ComplianceItem, ComplianceStatus } from '@/lib/types';
 import { canManage, isTerminalLocked } from '@/lib/access-control';
-import { isMenuItemAccessible, getDefaultModules, getDefaultSafetySubModules, terminalHasSafetySub, ProductModule, SafetySubModule } from '@/lib/modules';
+import { getDefaultSafetySubModules, terminalHasSafetySub, SafetySubModule } from '@/lib/modules';
 import { MultiSelect } from '@/components/ui/multi-select';
 import {
   CheckCircle2, XCircle, AlertTriangle, Filter, Search, AlertCircle, Plus, X, Trash2,
@@ -30,8 +30,7 @@ const COMPLIANCE_STATUS_MAP: Record<ComplianceStatus, SafetyStatus> = {
 function fmtDate(iso: string) { return new Date(iso).toLocaleDateString('pt-BR'); }
 
 export function CompliancePage() {
-  // `data` permanece só para terminalModules (licenciamento — Fase 5d)
-  const { user, data } = useAuth();
+  const { user } = useAuth();
   const { data: complianceItems = [] } = useCompliance();
   const { data: trainings = [] } = useTrainings();
   const { data: userTrainings = [] } = useTrainingAssignments();
@@ -45,11 +44,11 @@ export function CompliancePage() {
   const now = new Date();
   const soon = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-  // Check which modules are active
+  // Sub-módulos ativos vêm da config real do usuário (/auth/me → user.modules); item 8.
+  // Conformidade já vem derivada em safetySubModules. Admin enxerga tudo.
   const getActiveSubs = (): SafetySubModule[] => {
     if (!user || user.role === 'admin') return getDefaultSafetySubModules();
-    const config = data.terminalModules?.find(tm => tm.terminalId === user?.linkId);
-    return config?.activeSafetySubModules ?? getDefaultSafetySubModules();
+    return (user.modules?.safetySubModules as SafetySubModule[]) ?? getDefaultSafetySubModules();
   };
   const activeSubs = getActiveSubs();
   const hasTrainings = activeSubs.includes('trainings');
@@ -104,7 +103,7 @@ export function CompliancePage() {
       const terminal = u.linkId ? terminals.find(t => t.id === u.linkId) : null;
       return { user: u, status, missingTrainings, expiredTrainings, expiredEPIs, soonTrainings, soonEPIs, totalCompleted, totalEPIsValid, totalMandatory: mandatoryTrainings.length, totalEPIsDelivered: uEPIs.length, terminal };
     });
-  }, [data, hasTrainings, hasEPIs, visibleTerminalIds]);
+  }, [users, userTrainings, userEPIs, trainings, terminals, hasIntegration, hasTrainings, hasEPIs, visibleTerminalIds]);
 
   const filteredIntegrated = useMemo(() => {
     return userSummaries.filter(s => {

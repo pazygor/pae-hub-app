@@ -12,7 +12,7 @@ import { NAV_CONFIG, menuIdForPath } from '@/lib/nav-config';
  * Rota bloqueada → redireciona para /meu-painel (acessível a todos os perfis).
  */
 export function RequireAccess() {
-  const { user, data } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
 
   // Autenticação é responsabilidade do RequireAuth (acima na árvore).
@@ -29,7 +29,7 @@ export function RequireAccess() {
     // 1. Autoridade dos toggles de Níveis de Acesso (papel/nível para o resto)
     if (!isMenuAllowedForUser(user, menuId, item.roles)) return true;
     // 2. Licenciamento do terminal (Pacotes do Sistema)
-    const { modules, safetySubModules } = getUserActiveConfig(user, data);
+    const { modules, safetySubModules } = getUserActiveConfig(user);
     if (user.role !== 'admin' && !isMenuItemAccessible(menuId, modules, safetySubModules)) return true;
     return false;
   })();

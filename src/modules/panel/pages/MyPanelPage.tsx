@@ -33,8 +33,7 @@ const EPI_STATUS_CFG: Record<string, { label: string; color: string; bg: string 
 };
 
 export function MyPanelPage() {
-  // `data` só para o licenciamento de módulos (terminalModules — Fase 5d)
-  const { user, data } = useAuth();
+  const { user } = useAuth();
   const { data: trainings = [] } = useTrainings();
   const { data: userTrainings = [] } = useTrainingAssignments();
   const { data: epis = [] } = useEpis();
@@ -51,11 +50,10 @@ export function MyPanelPage() {
 
   const terminal = user.linkId ? terminals.find(t => t.id === user.linkId) : null;
 
-  // Active sub-modules
+  // Sub-módulos ativos vêm da config real do usuário (/auth/me → user.modules); item 8.
   const getActiveSubs = (): SafetySubModule[] => {
     if (user.role === 'admin') return getDefaultSafetySubModules();
-    const config = data.terminalModules?.find(tm => tm.terminalId === user.linkId);
-    return config?.activeSafetySubModules ?? getDefaultSafetySubModules();
+    return (user.modules?.safetySubModules as SafetySubModule[]) ?? getDefaultSafetySubModules();
   };
   const activeSubs = getActiveSubs();
   const hasTrainings = activeSubs.includes('trainings');

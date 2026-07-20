@@ -16,7 +16,7 @@ interface Props {
 const EMERGENCY_MENU_IDS = new Set(['cop', 'occurrences', 'map', 'dashboard']);
 
 export function AppSidebar({ collapsed }: Props) {
-  const { user, data, logout } = useAuth();
+  const { user, logout } = useAuth();
   const { presentationMode } = usePresentationMode();
   const { emergencies } = useActiveEmergencies();
   if (!user) return null;
@@ -24,7 +24,7 @@ export function AppSidebar({ collapsed }: Props) {
   const hasActiveEmergency = emergencies.length > 0;
 
   // Módulos ativos do terminal vinculado (licenciamento) — fonte única
-  const { modules: activeModules, safetySubModules: activeSafetySubs } = getUserActiveConfig(user, data);
+  const { modules: activeModules, safetySubModules: activeSafetySubs } = getUserActiveConfig(user);
 
   const filtered = NAV_CONFIG.filter(item => {
     // Autoridade dos toggles de Níveis de Acesso (papel/nível para o resto)

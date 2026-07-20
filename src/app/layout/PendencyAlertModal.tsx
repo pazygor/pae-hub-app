@@ -12,8 +12,7 @@ import { useTrainings, useTrainingAssignments, useEpiDeliveries, useCompliance }
  * para /meu-painel nas ações.
  */
 export function PendencyAlertModal() {
-  // `data` só para o licenciamento de módulos (terminalModules — Fase 5d)
-  const { user, data } = useAuth();
+  const { user } = useAuth();
   const { data: trainings = [] } = useTrainings();
   const { data: userTrainings = [] } = useTrainingAssignments();
   const { data: userEPIs = [] } = useEpiDeliveries();
@@ -26,7 +25,7 @@ export function PendencyAlertModal() {
   // === Pendency calculation (dados reais da API — Fase 5b) ===
   const now = new Date();
   const soonThreshold = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-  const { safetySubModules: activeSubs } = getUserActiveConfig(user, data);
+  const { safetySubModules: activeSubs } = getUserActiveConfig(user);
   const pendingTrainings = activeSubs.includes('trainings')
     ? trainings.filter(t => t.mandatory && !userTrainings.some(ut => ut.userId === user.id && ut.trainingId === t.id && new Date(ut.expiryDate) >= now)).length
     : 0;

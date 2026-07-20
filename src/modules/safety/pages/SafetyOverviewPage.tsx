@@ -1,10 +1,12 @@
 import { useAuth } from '@/lib/auth-context';
+import { useTerminals } from '@/api';
 import { SafetyOverview } from '../components/SafetyOverview';
 import { ShieldCheck, Lock } from 'lucide-react';
-import { getDefaultModules, getDefaultSafetySubModules, ProductModule, SafetySubModule } from '@/lib/modules';
+import { terminalHasSafetySub } from '@/lib/modules';
 
 export function SafetyOverviewPage() {
-  const { user, data } = useAuth();
+  const { user } = useAuth();
+  const { data: terminals = [], isLoading } = useTerminals();
 
   // Admin only
   if (!user || user.role !== 'admin') {
@@ -21,24 +23,21 @@ export function SafetyOverviewPage() {
     );
   }
 
-  const getActiveSubs = (): SafetySubModule[] => {
-    const config = data.terminalModules;
-    if (!config || config.length === 0) return getDefaultSafetySubModules();
-    // For admin: union of all active sub-modules across terminals
-    const allSubs = new Set<SafetySubModule>();
-    config.forEach(tm => {
-      const subs = tm.activeSafetySubModules ?? getDefaultSafetySubModules();
-      subs.forEach(s => allSubs.add(s));
-    });
-    return allSubs.size > 0 ? Array.from(allSubs) : getDefaultSafetySubModules();
-  };
-  const activeSubs = getActiveSubs();
+  // Admin enxerga a união dos sub-módulos ativos entre todos os terminais reais
+  // (config vinda da API — item 7/8). Conformidade é derivada em `terminalHasSafetySub`.
+  const hasTrainings = terminals.some(t => terminalHasSafetySub(t, 'trainings'));
+  const hasEPIs = terminals.some(t => terminalHasSafetySub(t, 'epis'));
+  const hasCompliance = terminals.some(t => terminalHasSafetySub(t, 'compliance'));
 
-  const hasTrainings = activeSubs.includes('trainings');
-  const hasEPIs = activeSubs.includes('epis');
-  const hasCompliance = activeSubs.includes('compliance');
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
+        Carregando indicadores…
+      </div>
+    );
+  }
 
-  // If no sub-modules active at all
+  // Se nenhum sub-módulo Safety está ativo em nenhum terminal
   if (!hasTrainings && !hasEPIs && !hasCompliance) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
