@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { useAccessSessions, useAccessStats, useActivity, useActivityStats } from '@/api';
+import { useAccessSessions, useAccessStats, useActivity, useActivityStats, useTerminals } from '@/api';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import {
@@ -86,17 +86,21 @@ export function AuditCenterPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'' | 'ativa' | 'encerrada' | 'expirada'>('');
   const [actionFilter, setActionFilter] = useState('');
+  const [terminalFilter, setTerminalFilter] = useState('');
+
+  const { data: terminals = [] } = useTerminals();
+  const terminalName = (id: string | null) => (id ? (terminals.find(t => t.id === id)?.name ?? '—') : '—');
 
   const range = useMemo(() => {
     const to = new Date();
     const from = new Date(to.getTime() - Number(days) * 24 * 60 * 60 * 1000);
-    return { from: from.toISOString(), to: to.toISOString() };
-  }, [days]);
+    return { from: from.toISOString(), to: to.toISOString(), terminalId: terminalFilter || undefined };
+  }, [days, terminalFilter]);
 
   const { data: accessStats } = useAccessStats(range);
-  const { data: accessRows = [], isLoading: loadingAccess } = useAccessSessions({ from: range.from, to: range.to, status: statusFilter || undefined });
+  const { data: accessRows = [], isLoading: loadingAccess } = useAccessSessions({ from: range.from, to: range.to, status: statusFilter || undefined, terminalId: terminalFilter || undefined });
   const { data: activityStats } = useActivityStats(range);
-  const { data: activityRows = [], isLoading: loadingActivity } = useActivity({ from: range.from, to: range.to, action: actionFilter || undefined });
+  const { data: activityRows = [], isLoading: loadingActivity } = useActivity({ from: range.from, to: range.to, action: actionFilter || undefined, terminalId: terminalFilter || undefined });
 
   const filteredAccess = useMemo(
     () => (search ? accessRows.filter(r => r.userName.toLowerCase().includes(search.toLowerCase())) : accessRows),
@@ -107,8 +111,8 @@ export function AuditCenterPage() {
     [activityRows, search],
   );
 
-  const activeFilterCount = [search, statusFilter, actionFilter].filter(Boolean).length;
-  const clearFilters = () => { setSearch(''); setStatusFilter(''); setActionFilter(''); };
+  const activeFilterCount = [search, statusFilter, actionFilter, terminalFilter].filter(Boolean).length;
+  const clearFilters = () => { setSearch(''); setStatusFilter(''); setActionFilter(''); setTerminalFilter(''); };
 
   if (!user || user.role !== 'admin') return <p className="text-muted-foreground text-sm">Acesso restrito.</p>;
 
@@ -179,6 +183,7 @@ export function AuditCenterPage() {
                 <thead>
                   <tr className="border-b text-left text-[10px] uppercase tracking-wider text-muted-foreground">
                     <th className="px-4 py-2.5 font-bold">Usuário</th>
+                    <th className="px-4 py-2.5 font-bold">Terminal</th>
                     <th className="px-4 py-2.5 font-bold">Login</th>
                     <th className="px-4 py-2.5 font-bold">Logout</th>
                     <th className="px-4 py-2.5 font-bold">Duração</th>
@@ -188,14 +193,15 @@ export function AuditCenterPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {loadingAccess && <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">Carregando…</td></tr>}
-                  {!loadingAccess && filteredAccess.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">Nenhum acesso no período.</td></tr>}
+                  {loadingAccess && <tr><td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">Carregando…</td></tr>}
+                  {!loadingAccess && filteredAccess.length === 0 && <tr><td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">Nenhum acesso no período.</td></tr>}
                   {filteredAccess.map(r => (
                     <tr key={r.id} className="hover:bg-secondary/30 transition-colors">
                       <td className="px-4 py-2.5">
                         <span className="font-semibold text-foreground">{r.userName}</span>
                         {r.userEmail && <span className="block text-[10px] text-muted-foreground">{r.userEmail}</span>}
                       </td>
+                      <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{terminalName(r.terminalId)}</td>
                       <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{fmtDateTime(r.loginAt)}</td>
                       <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{fmtDateTime(r.logoutAt)}</td>
                       <td className="px-4 py-2.5 font-mono text-foreground whitespace-nowrap">{fmtDuration(r.durationMs)}</td>
@@ -260,18 +266,20 @@ export function AuditCenterPage() {
                     <th className="px-4 py-2.5 font-bold">Usuário</th>
                     <th className="px-4 py-2.5 font-bold">Ação</th>
                     <th className="px-4 py-2.5 font-bold">Recurso</th>
+                    <th className="px-4 py-2.5 font-bold">Terminal</th>
                     <th className="px-4 py-2.5 font-bold">Detalhes</th>
                     <th className="px-4 py-2.5 font-bold">Quando</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {loadingActivity && <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">Carregando…</td></tr>}
-                  {!loadingActivity && filteredActivity.length === 0 && <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">Nenhuma atividade no período.</td></tr>}
+                  {loadingActivity && <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">Carregando…</td></tr>}
+                  {!loadingActivity && filteredActivity.length === 0 && <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">Nenhuma atividade no período.</td></tr>}
                   {filteredActivity.map(r => (
                     <tr key={r.id} className="hover:bg-secondary/30 transition-colors">
                       <td className="px-4 py-2.5 font-semibold text-foreground">{r.userName}</td>
                       <td className="px-4 py-2.5"><span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold">{actionLabel(r.action)}</span></td>
                       <td className="px-4 py-2.5 text-muted-foreground">{r.resource === 'occurrence' ? 'Ocorrência' : r.resource}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{terminalName(r.terminalId)}</td>
                       <td className="px-4 py-2.5 text-foreground">{formatDetails(r.action, r.details)}</td>
                       <td className="px-4 py-2.5 text-muted-foreground whitespace-nowrap">{fmtDateTime(r.createdAt)}</td>
                     </tr>
@@ -338,6 +346,16 @@ export function AuditCenterPage() {
               </Select>
             </div>
           )}
+          <div>
+            <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Terminal</label>
+            <Select value={terminalFilter || 'all'} onValueChange={v => setTerminalFilter(v === 'all' ? '' : v)}>
+              <SelectTrigger className="cursor-pointer text-xs h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="cursor-pointer">Todos os terminais</SelectItem>
+                {terminals.map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         {activeFilterCount > 0 && (
           <button onClick={clearFilters} className="mt-3 text-xs font-bold text-primary hover:text-primary/80 transition-colors">Limpar filtros</button>

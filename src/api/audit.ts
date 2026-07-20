@@ -8,6 +8,7 @@ export interface AccessSessionRow {
   userId: string;
   userName: string;
   userEmail: string | null;
+  terminalId: string | null;
   loginAt: string;
   logoutAt: string | null;
   status: 'ativa' | 'encerrada' | 'expirada';
@@ -31,6 +32,7 @@ export interface ActivityRow {
   action: string;
   resource: string;
   resourceId: string | null;
+  terminalId: string | null;
   details: unknown;
   ipAddress: string | null;
   createdAt: string;
@@ -45,6 +47,7 @@ export interface ActivityStats {
 
 export interface AccessFilters {
   userId?: string;
+  terminalId?: string;
   from?: string;
   to?: string;
   status?: 'ativa' | 'encerrada' | 'expirada' | '';
@@ -53,6 +56,7 @@ export interface AccessFilters {
 
 export interface ActivityFilters {
   userId?: string;
+  terminalId?: string;
   resource?: string;
   action?: string;
   resourceId?: string;
@@ -73,11 +77,11 @@ function qs(params: Record<string, string | number | undefined>): string {
 export const auditApi = {
   accessList: (f: AccessFilters = {}): Promise<AccessSessionRow[]> =>
     http.get<AccessSessionRow[]>(`/audit/access${qs(f)}`),
-  accessStats: (r: { from?: string; to?: string } = {}): Promise<AccessStats> =>
+  accessStats: (r: { from?: string; to?: string; terminalId?: string } = {}): Promise<AccessStats> =>
     http.get<AccessStats>(`/audit/access/stats${qs(r)}`),
   activityList: (f: ActivityFilters = {}): Promise<ActivityRow[]> =>
     http.get<ActivityRow[]>(`/audit/activity${qs(f)}`),
-  activityStats: (r: { from?: string; to?: string } = {}): Promise<ActivityStats> =>
+  activityStats: (r: { from?: string; to?: string; terminalId?: string } = {}): Promise<ActivityStats> =>
     http.get<ActivityStats>(`/audit/activity/stats${qs(r)}`),
   /** Registra uma abertura-chave (ex.: Sala de Situação) na trilha de atividade. */
   logView: (input: { action: 'open_situation_room'; resource: 'occurrence'; resourceId: string }): Promise<{ ok: boolean }> =>

@@ -373,12 +373,12 @@ export function useNotificationRuleMutations() {
 export function useAccessSessions(filters: AccessFilters) {
   return useQuery({ queryKey: ['audit', 'access', filters], queryFn: () => auditApi.accessList(filters) });
 }
-export function useAccessStats(range: { from?: string; to?: string }) {
+export function useAccessStats(range: { from?: string; to?: string; terminalId?: string }) {
   return useQuery({ queryKey: ['audit', 'access-stats', range], queryFn: () => auditApi.accessStats(range) });
 }
 export function useActivity(filters: ActivityFilters) {
   return useQuery({ queryKey: ['audit', 'activity', filters], queryFn: () => auditApi.activityList(filters) });
 }
-export function useActivityStats(range: { from?: string; to?: string }) {
+export function useActivityStats(range: { from?: string; to?: string; terminalId?: string }) {
   return useQuery({ queryKey: ['audit', 'activity-stats', range], queryFn: () => auditApi.activityStats(range) });
 }
