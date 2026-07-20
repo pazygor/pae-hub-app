@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
 import { useEpis, useEpiDeliveries, useEpiMutations, useUsers, useTerminals, usePermissions } from '@/api';
@@ -9,11 +9,16 @@ import { MultiSelect } from '@/components/ui/multi-select';
 import {
   HardHat, Plus, Trash2, AlertTriangle, Clock, X, Users, Package, Filter, Search,
   ChevronDown, ChevronUp, CalendarDays, UserCheck, MessageSquare, History, Shield,
-  RotateCcw, CheckSquare, ArrowRightLeft, RefreshCw, UserX, UserPlus, CheckCircle, CheckSquare2, Loader2
+  RotateCcw, CheckSquare, ArrowRightLeft, RefreshCw, UserX, UserPlus, CheckCircle, CheckSquare2, Loader2, Pencil
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { PieTooltipContent } from '@/components/common/PieTooltip';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog';
+import { useNavigate } from 'react-router-dom';
 import { AssignUsersModal } from '../components/AssignUsersModal';
 
 const COLORS = {
@@ -102,14 +107,20 @@ const EPI_TYPES = Object.entries(EPI_TYPE_LABELS) as [EPIType, string][];
 
 export function EpisPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { data: epis = [] } = useEpis();
   const { data: userEPIs = [] } = useEpiDeliveries();
   const { data: users = [] } = useUsers();
   const { data: terminals = [] } = useTerminals();
   const { data: permissions = [] } = usePermissions();
-  const { create, remove: removeEpiMut, deliver, updateDelivery, removeDelivery } = useEpiMutations();
+  const { create, update, remove: removeEpiMut, deliver, updateDelivery, removeDelivery } = useEpiMutations();
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
   const [showForm, setShowForm] = useState(false);
+  // null = cadastrando; id = editando o EPI correspondente.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // O formulário fica no topo: ao abrir (sobretudo ao editar um card lá embaixo)
+  // levamos o usuário até ele, senão parece que o clique não fez nada.
+  const formRef = useRef<HTMLDivElement>(null);
   const [showAssignForm, setShowAssignForm] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'epi' | 'user'>('epi');
@@ -169,6 +180,27 @@ export function EpisPage() {
     });
   }, [classified, filterStatus, effectiveTerminalFilter, filterType, filterUsage, searchUser]);
 
+  // Catálogo visível. Um EPI com `terminalIds` vazio é global (vale para todos),
+  // por isso aparece em qualquer terminal. Aplica dois recortes:
+  //  1) isolamento — só EPIs dos terminais que o usuário enxerga;
+  //  2) o filtro de Terminal da tela.
+  const scopedEpis = useMemo(
+    () => epis.filter(epi => {
+      const ids = epi.terminalIds ?? [];
+      return ids.length === 0 || ids.some(id => visibleTerminalIds.includes(id));
+    }),
+    [epis, visibleTerminalIds],
+  );
+  const filteredEpis = useMemo(
+    () => scopedEpis.filter(epi => {
+      if (filterType !== 'all' && epi.epiType !== filterType) return false;
+      if (effectiveTerminalFilter === 'all') return true;
+      const ids = epi.terminalIds ?? [];
+      return ids.length === 0 || ids.includes(effectiveTerminalFilter);
+    }),
+    [scopedEpis, filterType, effectiveTerminalFilter],
+  );
+
   // Counts (active only)
   const validCount = activeAssignments.filter(c => c.status === 'valid').length;
   const soonCount = activeAssignments.filter(c => c.status === 'soon').length;
@@ -225,26 +257,76 @@ export function EpisPage() {
       });
   }, [filteredAssignments, users]);
 
+  useEffect(() => {
+    if (showForm) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [showForm, editingId]);
+
+  // Um EPI é editável enquanto pelo menos UM dos seus terminais tiver o módulo
+  // (global = vale para todos, sempre editável). Se todos perderam, o registro
+  // está órfão: fica só-leitura até o módulo ser reativado. Espelha o back.
+  const epiIsEditable = (epi: EPI) => {
+    const ids = epi.terminalIds ?? [];
+    if (ids.length === 0) return true;
+    return ids.some(id => {
+      const t = terminals.find(t => t.id === id);
+      return t ? terminalHasSafetySub(t, 'epis') : false;
+    });
+  };
+  const [blockedEpi, setBlockedEpi] = useState<EPI | null>(null);
+  const blockedTerminalNames = (blockedEpi?.terminalIds ?? [])
+    .map(id => terminals.find(t => t.id === id)?.name)
+    .filter(Boolean)
+    .join(', ');
+
   // Actions
-  const addEPI = () => {
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setFormError('');
+    setForm({ name: '', description: '', epiType: 'outro', expiryDate: '', terminalIds: defaultTerminalIds });
+  };
+
+  const startCreate = () => {
+    setEditingId(null);
+    setFormError('');
+    setForm({ name: '', description: '', epiType: 'outro', expiryDate: '', terminalIds: defaultTerminalIds });
+    setShowForm(true);
+  };
+
+  const startEdit = (epi: EPI) => {
+    setEditingId(epi.id);
+    setFormError('');
+    setForm({
+      name: epi.name,
+      description: epi.description ?? '',
+      epiType: epi.epiType,
+      // input[type=date] exige yyyy-MM-dd
+      expiryDate: epi.expiryDate ? epi.expiryDate.slice(0, 10) : '',
+      terminalIds: epi.terminalIds ?? [],
+    });
+    setShowForm(true);
+  };
+
+  const saveEPI = () => {
     if (!form.name) { setFormError('Informe o nome do EPI.'); return; }
     if (!isAdminUser && form.terminalIds.length === 0) { setFormError('Selecione ao menos um terminal.'); return; }
     setFormError('');
-    create.mutate(
-      {
-        name: form.name, description: form.description,
-        epiType: form.epiType, expiryDate: form.expiryDate || undefined,
-        terminalIds: form.terminalIds,
-      },
-      {
-        onSuccess: () => {
-          setForm({ name: '', description: '', epiType: 'outro', expiryDate: '', terminalIds: defaultTerminalIds });
-          setShowForm(false);
-          toast.success('EPI cadastrado');
-        },
+    const input = {
+      name: form.name, description: form.description,
+      epiType: form.epiType, expiryDate: form.expiryDate || undefined,
+      terminalIds: form.terminalIds,
+    };
+    if (editingId) {
+      update.mutate({ id: editingId, input }, {
+        onSuccess: () => { closeForm(); toast.success('EPI atualizado'); },
         onError,
-      },
-    );
+      });
+      return;
+    }
+    create.mutate(input, {
+      onSuccess: () => { closeForm(); toast.success('EPI cadastrado'); },
+      onError,
+    });
   };
 
   // Batch assign — o back aplica defaults (hoje / validade do EPI) e pula entregas ativas
@@ -346,7 +428,7 @@ export function EpisPage() {
           </div>
         </div>
         {userCanManage && (
-          <button onClick={() => { setForm(f => ({ ...f, terminalIds: defaultTerminalIds })); setShowForm(true); }} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
+          <button onClick={startCreate} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
             <Plus size={14} /> Novo EPI
           </button>
         )}
@@ -354,10 +436,10 @@ export function EpisPage() {
 
       {/* Add EPI Form */}
       {showForm && (
-        <div className="bg-card border border-border rounded-xl p-4 space-y-4">
+        <div ref={formRef} className="bg-card border border-border rounded-xl p-4 space-y-4 scroll-mt-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-foreground">Cadastrar Novo EPI</h3>
-            <button onClick={() => setShowForm(false)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X size={16} /></button>
+            <h3 className="text-sm font-bold text-foreground">{editingId ? 'Editar EPI' : 'Cadastrar Novo EPI'}</h3>
+            <button onClick={closeForm} className="text-muted-foreground hover:text-foreground cursor-pointer"><X size={16} /></button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-1.5">
@@ -376,9 +458,16 @@ export function EpisPage() {
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminais</label>
-              {/* Multi-terminal (registro compartilhado). Item 6: só terminais com o módulo. */}
+              {/* Multi-terminal (registro compartilhado). Item 6: só terminais com o módulo —
+                  mais os já vinculados, senão o vínculo ficaria invisível na edição e a tela
+                  mostraria "Global" por engano. */}
               <MultiSelect
-                options={terminals.filter(t => terminalHasSafetySub(t, 'epis')).map(t => ({ value: t.id, label: t.name }))}
+                options={terminals
+                  .filter(t => terminalHasSafetySub(t, 'epis') || form.terminalIds.includes(t.id))
+                  .map(t => ({
+                    value: t.id,
+                    label: terminalHasSafetySub(t, 'epis') ? t.name : `${t.name} (módulo inativo)`,
+                  }))}
                 selected={form.terminalIds}
                 onChange={ids => setForm(f => ({ ...f, terminalIds: ids }))}
                 placeholder={isAdminUser ? 'Global (todos os terminais)' : 'Selecione o(s) terminal(is)...'}
@@ -398,13 +487,17 @@ export function EpisPage() {
             <textarea placeholder="Descrição do EPI..." value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               className="w-full px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground min-h-[70px] focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
           </div>
-          <p className="text-[10px] text-muted-foreground">Após salvar, use o botão <strong>"Entregar EPI"</strong> para distribuir a usuários específicos.</p>
+          <p className="text-[10px] text-muted-foreground">
+            {editingId
+              ? 'A alteração vale para o catálogo. As entregas já feitas mantêm a validade registrada na entrega.'
+              : 'Após salvar, use o botão "Entregar EPI" para distribuir a usuários específicos.'}
+          </p>
           {formError && <p className="text-xs text-primary font-bold">{formError}</p>}
           <div className="flex gap-2 pt-1">
-            <button onClick={addEPI} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity">
-              {create.isPending && <Loader2 size={12} className="animate-spin" />} Salvar EPI
+            <button onClick={saveEPI} disabled={create.isPending || update.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5 cursor-pointer hover:opacity-90 transition-opacity">
+              {(create.isPending || update.isPending) && <Loader2 size={12} className="animate-spin" />} {editingId ? 'Salvar alterações' : 'Salvar EPI'}
             </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
+            <button onClick={closeForm} className="px-4 py-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-lg cursor-pointer hover:bg-secondary/80 transition-colors">Cancelar</button>
           </div>
         </div>
       )}
@@ -430,6 +523,7 @@ export function EpisPage() {
         <div className="bg-card border border-destructive/20 rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Sem EPI</p>
           <p className="text-xl font-mono font-bold text-destructive">{usersWithoutEPI.length}</p>
+          <small className="text-[9px] text-muted-foreground">Usuários sem EPI</small>
         </div>
       </div>
 
@@ -770,11 +864,42 @@ export function EpisPage() {
         </div>
       )}
 
+      {/* Edição bloqueada: nenhum terminal do EPI tem mais o módulo (registro órfão). */}
+      <AlertDialog open={!!blockedEpi} onOpenChange={open => { if (!open) setBlockedEpi(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <span className="p-1.5 bg-warning/10 rounded-lg"><Shield size={16} className="text-warning" /></span>
+              Edição indisponível
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              O EPI <strong className="text-foreground font-semibold">{blockedEpi?.name}</strong> pertence
+              {blockedTerminalNames ? <> a <strong className="text-foreground font-semibold">{blockedTerminalNames}</strong></> : ' a um terminal'},
+              que não tem mais o módulo <strong className="text-foreground font-semibold">EPIs</strong> habilitado.
+              O registro fica visível apenas para consulta.
+              {isAdminUser
+                ? ' Para voltar a editá-lo, reative o módulo EPIs desse terminal em Pacotes do Sistema.'
+                : ' Para voltar a editá-lo, valide com o comercial a ativação do módulo de EPIs para esse terminal.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="cursor-pointer">Fechar</AlertDialogCancel>
+            {isAdminUser && (
+              <AlertDialogAction
+                onClick={() => navigate('/pacotes-do-sistema')}
+                className="cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Ir para Pacotes do Sistema
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* ===== EPI VIEW ===== */}
       {viewMode === 'epi' && (
         <div className="space-y-4">
-          {epis
-            .filter(epi => filterType === 'all' || epi.epiType === filterType)
+          {filteredEpis
             .map(epi => {
               const assignments = filteredAssignments.filter(a => a.epiId === epi.id);
               const activeEpiAssignments = assignments.filter(a => a.usageStatus !== 'substituido' && a.usageStatus !== 'devolvido');
@@ -804,7 +929,18 @@ export function EpisPage() {
                           <UserPlus size={12} /> Entregar EPI
                         </button>
                       )}
-                      {userCanManage && <button onClick={() => removeEPI(epi.id)} className="p-1.5 text-destructive/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 size={14} /></button>}
+                      {userCanManage && (
+                        <button
+                          onClick={() => (epiIsEditable(epi) ? startEdit(epi) : setBlockedEpi(epi))}
+                          title={epiIsEditable(epi) ? 'Editar EPI' : 'Edição indisponível — módulo inativo no terminal'}
+                          className={`p-1.5 rounded-lg transition-colors ${epiIsEditable(epi)
+                            ? 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                            : 'text-muted-foreground/40 hover:bg-secondary'}`}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      )}
+                      {userCanManage && <button onClick={() => removeEPI(epi.id)} title="Remover EPI" className="p-1.5 text-destructive/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 size={14} /></button>}
                     </div>
                   </div>
 
@@ -853,8 +989,12 @@ export function EpisPage() {
               );
             })}
 
-          {epis.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground text-sm">Nenhum EPI cadastrado.</div>
+          {filteredEpis.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground text-sm">
+              {scopedEpis.length === 0
+                ? 'Nenhum EPI cadastrado.'
+                : 'Nenhum EPI corresponde aos filtros aplicados.'}
+            </div>
           )}
         </div>
       )}

@@ -73,6 +73,8 @@ export const episApi = {
   deliveries: async (): Promise<UserEPI[]> =>
     (await http.get<any[]>('/epis/deliveries')).map(adaptDelivery),
   create: async (input: EpiInput): Promise<EPI> => adaptEpi(await http.post<any>('/epis', input)),
+  update: async (id: string, input: Partial<EpiInput>): Promise<EPI> =>
+    adaptEpi(await http.put<any>(`/epis/${id}`, input)),
   remove: (id: string): Promise<unknown> => http.del(`/epis/${id}`),
   deliver: async (id: string, input: DeliverEpiInput): Promise<UserEPI[]> =>
     (await http.post<any[]>(`/epis/${id}/deliveries`, input)).map(adaptDelivery),

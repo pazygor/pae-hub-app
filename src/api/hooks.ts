@@ -284,6 +284,7 @@ export function useEpiMutations() {
   };
   return {
     create: useMutation({ mutationFn: (input: EpiInput) => episApi.create(input), onSuccess }),
+    update: useMutation({ mutationFn: (v: { id: string; input: Partial<EpiInput> }) => episApi.update(v.id, v.input), onSuccess }),
     remove: useMutation({ mutationFn: (id: string) => episApi.remove(id), onSuccess }),
     deliver: useMutation({ mutationFn: (v: { id: string; input: DeliverEpiInput }) => episApi.deliver(v.id, v.input), onSuccess }),
     updateDelivery: useMutation({
