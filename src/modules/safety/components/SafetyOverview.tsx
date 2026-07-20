@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useUsers, useTrainings, useTrainingAssignments, useEpis, useEpiDeliveries, useTerminals } from '@/api';
 import { StatCard } from '@/components/common/StatCard';
+import { PieTooltipContent } from '@/components/common/PieTooltip';
 import { GraduationCap, HardHat, AlertTriangle, Users, ClipboardCheck, Clock, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 
@@ -99,11 +100,12 @@ export function SafetyOverview({ hasTrainings = true, hasEPIs = true, hasComplia
   const validTrainings = hasTrainings ? data.userTrainings.filter((ut: any) => new Date(ut.expiryDate) >= now).length : 0;
   const validEPIs = hasEPIs ? data.userEPIs.filter((ue: any) => !ue.expiryDate || new Date(ue.expiryDate) >= now).length : 0;
 
-  // Pie data
+  // Pie data — a cor vai em `fill` (e não `color`) porque é dela que o recharts
+  // monta o payload da legenda do <Pie>; o <Cell> pinta só a fatia.
   const pieData = [
-    { name: 'Operacional', value: operacionalCount, color: STATUS_COLORS.operacional },
-    { name: 'Atenção', value: atencaoCount, color: STATUS_COLORS.atencao },
-    { name: 'Não Conforme', value: naoConformeCount, color: STATUS_COLORS.nao_conforme },
+    { name: 'Operacional', value: operacionalCount, fill: STATUS_COLORS.operacional },
+    { name: 'Atenção', value: atencaoCount, fill: STATUS_COLORS.atencao },
+    { name: 'Não Conforme', value: naoConformeCount, fill: STATUS_COLORS.nao_conforme },
   ].filter(d => d.value > 0);
 
   // Bar: per terminal
@@ -243,10 +245,10 @@ export function SafetyOverview({ hasTrainings = true, hasEPIs = true, hasComplia
               <PieChart>
                 <Pie data={pieData} dataKey="value" cx="50%" cy="50%" outerRadius={80} innerRadius={40} paddingAngle={3}>
                   {pieData.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
+                    <Cell key={i} fill={entry.fill} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ background: 'hsl(0,0%,10%)', border: 'none', borderRadius: 8, fontSize: 12, color: '#fff' }} />
+                <Tooltip content={<PieTooltipContent />} />
                 <Legend formatter={(value) => <span className="text-xs text-muted-foreground">{value}</span>} />
               </PieChart>
             </ResponsiveContainer>

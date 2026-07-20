@@ -11,6 +11,7 @@ import {
   Video, Upload, ExternalLink, Paperclip, CheckSquare2, Loader2
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { PieTooltipContent } from '@/components/common/PieTooltip';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { AssignUsersModal } from '../components/AssignUsersModal';
 
@@ -134,10 +135,11 @@ export function TrainingsPage() {
   }, [trainings, users, userTrainings]);
 
   // Charts
+  // A cor vai em `fill`: é dela que o recharts monta o payload da legenda do <Pie>.
   const donutData = [
-    { name: 'Em dia', value: validCount, color: COLORS.valid },
-    { name: 'Atenção', value: soonCount, color: COLORS.soon },
-    { name: 'Vencidos', value: expiredCount, color: COLORS.expired },
+    { name: 'Em dia', value: validCount, fill: COLORS.valid },
+    { name: 'Atenção', value: soonCount, fill: COLORS.soon },
+    { name: 'Vencidos', value: expiredCount, fill: COLORS.expired },
   ].filter(d => d.value > 0);
 
   const barData = terminals.map(t => {
@@ -415,9 +417,9 @@ export function TrainingsPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={donutData} dataKey="value" cx="50%" cy="50%" outerRadius={55} innerRadius={30} paddingAngle={3}>
-                    {donutData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                    {donutData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ background: 'hsl(0,0%,10%)', border: 'none', borderRadius: 8, fontSize: 12, color: '#fff' }} />
+                  <Tooltip content={<PieTooltipContent />} />
                   <Legend formatter={(value) => <span className="text-xs text-muted-foreground">{value}</span>} />
                 </PieChart>
               </ResponsiveContainer>

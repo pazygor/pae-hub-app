@@ -12,6 +12,7 @@ import {
   RotateCcw, CheckSquare, ArrowRightLeft, RefreshCw, UserX, UserPlus, CheckCircle, CheckSquare2, Loader2
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { PieTooltipContent } from '@/components/common/PieTooltip';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { AssignUsersModal } from '../components/AssignUsersModal';
 
@@ -180,10 +181,11 @@ export function EpisPage() {
   }, [users, activeAssignments]);
 
   // Charts
+  // A cor vai em `fill`: é dela que o recharts monta o payload da legenda do <Pie>.
   const donutData = [
-    { name: 'Em Uso', value: activeAssignments.filter(c => c.usageStatus === 'em_uso').length, color: COLORS.valid },
-    { name: 'Vencidos', value: expiredCount, color: COLORS.expired },
-    { name: 'Atenção', value: soonCount, color: COLORS.soon },
+    { name: 'Em Uso', value: activeAssignments.filter(c => c.usageStatus === 'em_uso').length, fill: COLORS.valid },
+    { name: 'Vencidos', value: expiredCount, fill: COLORS.expired },
+    { name: 'Atenção', value: soonCount, fill: COLORS.soon },
   ].filter(d => d.value > 0);
 
   const barData = terminals.map(t => {
@@ -440,9 +442,9 @@ export function EpisPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie data={donutData} dataKey="value" cx="50%" cy="50%" outerRadius={55} innerRadius={30} paddingAngle={3}>
-                    {donutData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                    {donutData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ background: 'hsl(0,0%,10%)', border: 'none', borderRadius: 8, fontSize: 12, color: '#fff' }} />
+                  <Tooltip content={<PieTooltipContent />} />
                   <Legend formatter={(value) => <span className="text-xs text-muted-foreground">{value}</span>} />
                 </PieChart>
               </ResponsiveContainer>
