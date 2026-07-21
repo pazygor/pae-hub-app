@@ -5,7 +5,6 @@ import { useEpis, useEpiDeliveries, useEpiMutations, useUsers, useTerminals, use
 import { EPI, UserEPI, EPIType, EPI_TYPE_LABELS, EPIUsageStatus, EPI_USAGE_LABELS } from '@/lib/types';
 import { canManage, canViewManagement, getVisibleTerminalIds, isTerminalLocked } from '@/lib/access-control';
 import { terminalHasSafetySub } from '@/lib/modules';
-import { MultiSelect } from '@/components/ui/multi-select';
 import {
   HardHat, Plus, Trash2, AlertTriangle, Clock, X, Users, Package, Filter, Search,
   ChevronDown, ChevronUp, CalendarDays, UserCheck, MessageSquare, History, Shield,
@@ -124,7 +123,9 @@ export function EpisPage() {
   const [showAssignForm, setShowAssignForm] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'epi' | 'user'>('epi');
-  const [form, setForm] = useState({ name: '', description: '', epiType: 'outro' as EPIType, expiryDate: '', terminalIds: [] as string[] });
+  // Seleção única de terminal (1:1 no front). O submit ainda envia terminalIds:[id]
+  // — o back e o shape de dados seguem em lista, prontos para N terminais no futuro.
+  const [form, setForm] = useState({ name: '', description: '', epiType: 'outro' as EPIType, expiryDate: '', terminalId: '' });
   const [formError, setFormError] = useState('');
   const [assignForm, setAssignForm] = useState({ userId: '', deliveryDate: '', expiryDate: '', responsible: '', observations: '' });
   const [batchAssign, setBatchAssign] = useState<string | null>(null);
@@ -140,9 +141,10 @@ export function EpisPage() {
     return [];
   }, [user, terminals, permissions]);
   const terminalLocked = isTerminalLocked(user);
-  // "Global" (org-wide) só para admin; não-admin cria no(s) próprio(s) terminal(is) (default = casa).
+  // Terminal é obrigatório na criação; não há mais "Global". Não-admin já vem com o
+  // terminal-casa; admin escolhe um.
   const isAdminUser = user?.role === 'admin';
-  const defaultTerminalIds = isAdminUser ? [] : (user?.linkId ? [user.linkId] : []);
+  const defaultTerminalId = isAdminUser ? '' : (user?.linkId ?? '');
 
   // Filters — auto-lock terminal for non-admin users
   const [filterTerminal, setFilterTerminal] = useState('all');
@@ -307,13 +309,13 @@ export function EpisPage() {
     setShowForm(false);
     setEditingId(null);
     setFormError('');
-    setForm({ name: '', description: '', epiType: 'outro', expiryDate: '', terminalIds: defaultTerminalIds });
+    setForm({ name: '', description: '', epiType: 'outro', expiryDate: '', terminalId: defaultTerminalId });
   };
 
   const startCreate = () => {
     setEditingId(null);
     setFormError('');
-    setForm({ name: '', description: '', epiType: 'outro', expiryDate: '', terminalIds: defaultTerminalIds });
+    setForm({ name: '', description: '', epiType: 'outro', expiryDate: '', terminalId: defaultTerminalId });
     setShowForm(true);
   };
 
@@ -326,19 +328,20 @@ export function EpisPage() {
       epiType: epi.epiType,
       // input[type=date] exige yyyy-MM-dd
       expiryDate: epi.expiryDate ? epi.expiryDate.slice(0, 10) : '',
-      terminalIds: epi.terminalIds ?? [],
+      // registro legado pode ter N terminais; edição passa a ser 1:1 → pega o primeiro.
+      terminalId: (epi.terminalIds ?? [])[0] ?? '',
     });
     setShowForm(true);
   };
 
   const saveEPI = () => {
     if (!form.name) { setFormError('Informe o nome do EPI.'); return; }
-    if (!isAdminUser && form.terminalIds.length === 0) { setFormError('Selecione ao menos um terminal.'); return; }
+    if (!form.terminalId) { setFormError('Selecione o terminal.'); return; }
     setFormError('');
     const input = {
       name: form.name, description: form.description,
       epiType: form.epiType, expiryDate: form.expiryDate || undefined,
-      terminalIds: form.terminalIds,
+      terminalIds: [form.terminalId],
     };
     if (editingId) {
       update.mutate({ id: editingId, input }, {
@@ -481,24 +484,17 @@ export function EpisPage() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminais</label>
-              {/* Multi-terminal (registro compartilhado). Item 6: só terminais com o módulo —
-                  mais os já vinculados, senão o vínculo ficaria invisível na edição e a tela
-                  mostraria "Global" por engano. */}
-              <MultiSelect
-                options={terminals
-                  .filter(t => terminalHasSafetySub(t, 'epis') || form.terminalIds.includes(t.id))
-                  .map(t => ({
-                    value: t.id,
-                    label: terminalHasSafetySub(t, 'epis') ? t.name : `${t.name} (módulo inativo)`,
-                  }))}
-                selected={form.terminalIds}
-                onChange={ids => setForm(f => ({ ...f, terminalIds: ids }))}
-                placeholder={isAdminUser ? 'Global (todos os terminais)' : 'Selecione o(s) terminal(is)...'}
-                searchPlaceholder="Buscar terminal..."
-                emptyText="Nenhum terminal com o módulo EPIs."
-              />
-              {isAdminUser && <p className="text-[10px] text-muted-foreground">Vazio = todos os terminais (global).</p>}
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminal *</label>
+              {/* Seleção única (1:1). Só terminais visíveis com o módulo — mais o já
+                  vinculado, para não sumir da edição. */}
+              <Select value={form.terminalId} onValueChange={v => setForm(f => ({ ...f, terminalId: v }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
+                <SelectContent>
+                  {terminals
+                    .filter(t => t.id === form.terminalId || (visibleTerminalIds.includes(t.id) && terminalHasSafetySub(t, 'epis')))
+                    .map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Data de Validade</label>

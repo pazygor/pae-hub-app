@@ -5,7 +5,6 @@ import { useAuth } from '@/lib/auth-context';
 import { Training } from '@/lib/types';
 import { canManage, isTerminalLocked } from '@/lib/access-control';
 import { terminalHasSafetySub, appliesToUser } from '@/lib/modules';
-import { MultiSelect } from '@/components/ui/multi-select';
 import { useTrainings, useTrainingAssignments, useTrainingMutations, useUsers, useTerminals, usePermissions } from '@/api';
 import {
   GraduationCap, Plus, Trash2, CheckCircle, AlertTriangle, Clock, X, Users, UserPlus,
@@ -80,7 +79,9 @@ export function TrainingsPage() {
   const [showAssignForm, setShowAssignForm] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'user' | 'training'>('training');
-  const [form, setForm] = useState({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalIds: [] as string[] });
+  // Seleção única de terminal (1:1 no front). O submit ainda envia terminalIds:[id]
+  // — o back e o shape de dados seguem em lista, prontos para N terminais no futuro.
+  const [form, setForm] = useState({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalId: '' });
   const [formError, setFormError] = useState('');
   const [batchAssign, setBatchAssign] = useState<string | null>(null);
   const [assignForm, setAssignForm] = useState({ userId: '', completedDate: '', expiryDate: '', certificate: '' });
@@ -94,9 +95,10 @@ export function TrainingsPage() {
     return [];
   }, [user, terminals, permissions]);
   const terminalLocked = isTerminalLocked(user);
-  // "Global" (org-wide) só para admin; não-admin cria no(s) próprio(s) terminal(is) (default = casa).
+  // Terminal é obrigatório na criação; não há mais "Global". Não-admin já vem com o
+  // terminal-casa; admin escolhe um.
   const isAdminUser = user?.role === 'admin';
-  const defaultTerminalIds = isAdminUser ? [] : (user?.linkId ? [user.linkId] : []);
+  const defaultTerminalId = isAdminUser ? '' : (user?.linkId ?? '');
 
   // Filters — auto-lock terminal for non-admin users
   const [filterTerminal, setFilterTerminal] = useState('all');
@@ -311,13 +313,13 @@ export function TrainingsPage() {
     setShowForm(false);
     setEditingId(null);
     setFormError('');
-    setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalIds: defaultTerminalIds });
+    setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalId: defaultTerminalId });
   };
 
   const startCreate = () => {
     setEditingId(null);
     setFormError('');
-    setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalIds: defaultTerminalIds });
+    setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalId: defaultTerminalId });
     setShowForm(true);
   };
 
@@ -330,20 +332,21 @@ export function TrainingsPage() {
       mandatory: t.mandatory,
       materialFileName: t.materialFileName ?? '',
       videoUrl: t.videoUrl ?? '',
-      terminalIds: t.terminalIds ?? [],
+      // registro legado pode ter N terminais; edição passa a ser 1:1 → pega o primeiro.
+      terminalId: (t.terminalIds ?? [])[0] ?? '',
     });
     setShowForm(true);
   };
 
   const saveTraining = () => {
     if (!form.name) { setFormError('Informe o nome do treinamento.'); return; }
-    if (!isAdminUser && form.terminalIds.length === 0) { setFormError('Selecione ao menos um terminal.'); return; }
+    if (!form.terminalId) { setFormError('Selecione o terminal.'); return; }
     setFormError('');
     const input = {
       name: form.name, description: form.description, mandatory: form.mandatory,
       materialFileName: form.materialFileName || undefined,
       videoUrl: form.videoUrl || undefined,
-      terminalIds: form.terminalIds,
+      terminalIds: [form.terminalId],
     };
     if (editingId) {
       update.mutate({ id: editingId, input }, {
@@ -356,8 +359,7 @@ export function TrainingsPage() {
       input,
       {
         onSuccess: () => {
-          setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalIds: defaultTerminalIds });
-          setShowForm(false);
+          closeForm();
           toast.success('Treinamento criado');
         },
         onError,
@@ -449,24 +451,17 @@ export function TrainingsPage() {
                 className="w-full h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminais</label>
-              {/* Multi-terminal (registro compartilhado). Item 6: só terminais com o módulo —
-                  mais os já vinculados, senão o vínculo ficaria invisível na edição e a tela
-                  mostraria "Global" por engano. */}
-              <MultiSelect
-                options={terminals
-                  .filter(t => terminalHasSafetySub(t, 'trainings') || form.terminalIds.includes(t.id))
-                  .map(t => ({
-                    value: t.id,
-                    label: terminalHasSafetySub(t, 'trainings') ? t.name : `${t.name} (módulo inativo)`,
-                  }))}
-                selected={form.terminalIds}
-                onChange={ids => setForm(f => ({ ...f, terminalIds: ids }))}
-                placeholder={isAdminUser ? 'Global (todos os terminais)' : 'Selecione o(s) terminal(is)...'}
-                searchPlaceholder="Buscar terminal..."
-                emptyText="Nenhum terminal com o módulo Treinamentos."
-              />
-              {isAdminUser && <p className="text-[10px] text-muted-foreground">Vazio = todos os terminais (global).</p>}
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminal *</label>
+              {/* Seleção única (1:1). Só terminais visíveis com o módulo — mais o já
+                  vinculado, para não sumir da edição. */}
+              <Select value={form.terminalId} onValueChange={v => setForm(f => ({ ...f, terminalId: v }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
+                <SelectContent>
+                  {terminals
+                    .filter(t => t.id === form.terminalId || (visibleTerminalIds.includes(t.id) && terminalHasSafetySub(t, 'trainings')))
+                    .map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-end">
               <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer h-10 px-3">

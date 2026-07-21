@@ -5,7 +5,6 @@ import { useCompliance, useComplianceMutations, useEpis, useTrainings, useTraini
 import { ComplianceItem, ComplianceStatus } from '@/lib/types';
 import { canManage, isTerminalLocked } from '@/lib/access-control';
 import { getDefaultSafetySubModules, terminalHasSafetySub, SafetySubModule } from '@/lib/modules';
-import { MultiSelect } from '@/components/ui/multi-select';
 import {
   CheckCircle2, XCircle, AlertTriangle, Filter, Search, AlertCircle, Plus, X, Trash2,
   ClipboardCheck, ChevronDown, ChevronUp, Clock, UserCheck, FileText, Shield, Loader2
@@ -64,9 +63,10 @@ export function CompliancePage() {
     return [];
   }, [user, terminals, permissions]);
   const terminalLocked = isTerminalLocked(user);
-  // "Nenhum" (sem terminal) só para admin; não-admin cria no(s) próprio(s) terminal(is) (default = casa).
+  // Terminal é obrigatório na criação; não há mais "Nenhum" (nível da empresa).
+  // Não-admin já vem com o terminal-casa; admin escolhe um.
   const isAdminUser = user?.role === 'admin';
-  const defaultTerminalIds = isAdminUser ? [] : (user?.linkId ? [user.linkId] : []);
+  const defaultTerminalId = isAdminUser ? '' : (user?.linkId ?? '');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<SafetyStatus | 'all'>('all');
@@ -75,7 +75,9 @@ export function CompliancePage() {
   const effectiveTerminalFilter = terminalLocked && visibleTerminalIds.length === 1 ? visibleTerminalIds[0] : filterTerminal;
   const [activeTab, setActiveTab] = useState<ViewTab>(hasIntegration ? 'integrated' : 'manual');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', responsible: '', status: 'conforme' as ComplianceStatus, expiryDate: '', userId: '', notes: '', terminalIds: [] as string[], area: '', verificationDate: '' });
+  // Seleção única de terminal (1:1 no front). O submit ainda envia terminalIds:[id]
+  // — o back e o shape de dados seguem em lista, prontos para N terminais no futuro.
+  const [form, setForm] = useState({ name: '', responsible: '', status: 'conforme' as ComplianceStatus, expiryDate: '', userId: '', notes: '', terminalId: '', area: '', verificationDate: '' });
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
 
   // ===== INTEGRATED DATA (from trainings & EPIs) =====
@@ -144,18 +146,18 @@ export function CompliancePage() {
   // Actions
   const addItem = () => {
     if (!form.name) { toast.error('Informe o nome do item'); return; }
-    if (!isAdminUser && form.terminalIds.length === 0) { toast.error('Selecione ao menos um terminal'); return; }
+    if (!form.terminalId) { toast.error('Selecione o terminal'); return; }
     create.mutate(
       {
         name: form.name, responsible: form.responsible,
         status: form.status, expiryDate: form.expiryDate || undefined,
         userId: form.userId || undefined, notes: form.notes || undefined,
-        terminalIds: form.terminalIds, area: form.area || undefined,
+        terminalIds: [form.terminalId], area: form.area || undefined,
         verificationDate: form.verificationDate || undefined,
       },
       {
         onSuccess: () => {
-          setForm({ name: '', responsible: '', status: 'conforme', expiryDate: '', userId: '', notes: '', terminalIds: defaultTerminalIds, area: '', verificationDate: '' });
+          setForm({ name: '', responsible: '', status: 'conforme', expiryDate: '', userId: '', notes: '', terminalId: defaultTerminalId, area: '', verificationDate: '' });
           setShowForm(false);
           toast.success('Item de conformidade criado');
         },
@@ -199,7 +201,7 @@ export function CompliancePage() {
           </div>
         </div>
         {canManage(user) && (
-          <button onClick={() => { setForm(f => ({ ...f, terminalIds: defaultTerminalIds })); setShowForm(true); }} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
+          <button onClick={() => { setForm(f => ({ ...f, terminalId: defaultTerminalId })); setShowForm(true); }} className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:brightness-110 transition-all">
             <Plus size={14} /> Novo Item
           </button>
         )}
@@ -237,17 +239,16 @@ export function CompliancePage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminais</label>
-              {/* Multi-terminal (registro compartilhado). Item 6: só terminais com Conformidade (derivada). */}
-              <MultiSelect
-                options={terminals.filter(t => terminalHasSafetySub(t, 'compliance')).map(t => ({ value: t.id, label: t.name }))}
-                selected={form.terminalIds}
-                onChange={ids => setForm(f => ({ ...f, terminalIds: ids }))}
-                placeholder={isAdminUser ? 'Nenhum (nível da empresa)' : 'Selecione o(s) terminal(is)...'}
-                searchPlaceholder="Buscar terminal..."
-                emptyText="Nenhum terminal com Conformidade."
-              />
-              {isAdminUser && <p className="text-[10px] text-muted-foreground">Vazio = sem terminal específico (nível da empresa).</p>}
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Terminal *</label>
+              {/* Seleção única (1:1). Só terminais visíveis com Conformidade (derivada). */}
+              <Select value={form.terminalId} onValueChange={v => setForm(f => ({ ...f, terminalId: v }))}>
+                <SelectTrigger className="cursor-pointer"><SelectValue placeholder="Selecione o terminal..." /></SelectTrigger>
+                <SelectContent>
+                  {terminals
+                    .filter(t => t.id === form.terminalId || (visibleTerminalIds.includes(t.id) && terminalHasSafetySub(t, 'compliance')))
+                    .map(t => <SelectItem key={t.id} value={t.id} className="cursor-pointer">{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Área</label>
