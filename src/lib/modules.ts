@@ -121,6 +121,23 @@ export function terminalHasSafetySub(
   return toggles.includes(sub);
 }
 
+/**
+ * Um registro de Safety (Treinamento/EPI/Conformidade) se aplica a um usuário?
+ *
+ * Desde que esses registros viraram **compartilhados** (`terminalIds` como lista),
+ * não vale mais assumir que tudo se aplica a todo mundo: um treinamento do TECON
+ * não é pendência de quem trabalha em outro terminal.
+ *
+ * Lista vazia = **global** (vale para todos os terminais).
+ */
+export function appliesToUser(
+  record: { terminalIds?: string[] },
+  user: { linkId?: string | null },
+): boolean {
+  const ids = record.terminalIds ?? [];
+  return ids.length === 0 || (!!user.linkId && ids.includes(user.linkId));
+}
+
 export function getDefaultModules(): ProductModule[] {
   return ['emergency_management', 'operational_safety'];
 }

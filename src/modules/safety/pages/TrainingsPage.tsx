@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { Training } from '@/lib/types';
 import { canManage, isTerminalLocked } from '@/lib/access-control';
-import { terminalHasSafetySub } from '@/lib/modules';
+import { terminalHasSafetySub, appliesToUser } from '@/lib/modules';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { useTrainings, useTrainingAssignments, useTrainingMutations, useUsers, useTerminals, usePermissions } from '@/api';
 import {
@@ -165,10 +165,10 @@ export function TrainingsPage() {
   // Pending: mandatory trainings not assigned to any user or expired
   const pendingCount = useMemo(() => {
     let count = 0;
-    // Só o catálogo e os usuários que este usuário enxerga.
-    const mandatoryTrainings = scopedTrainings.filter(t => t.mandatory);
+    // Só o catálogo e os usuários que este usuário enxerga — e, para cada um,
+    // apenas os obrigatórios que se aplicam ao terminal dele.
     for (const u of scopedUsers) {
-      for (const t of mandatoryTrainings) {
+      for (const t of scopedTrainings.filter(t => t.mandatory && appliesToUser(t, u))) {
         const has = userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired');
         if (!has) count++;
       }
@@ -184,7 +184,9 @@ export function TrainingsPage() {
     { name: 'Vencidos', value: expiredCount, fill: COLORS.expired },
   ].filter(d => d.value > 0);
 
-  const barData = terminals.map(t => {
+  // Só terminais visíveis: senão o gráfico exibe o nome de terminais que o
+  // usuário não pode ver (com as barras zeradas, mas o rótulo vaza).
+  const barData = terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => {
     const tUsers = users.filter(u => u.linkId === t.id).map(u => u.id);
     const tClassified = classified.filter(c => tUsers.includes(c.userId));
     return {
@@ -208,19 +210,22 @@ export function TrainingsPage() {
     return Array.from(map.entries())
       .map(([userId, items]) => {
         const u = users.find(u => u.id === userId);
-        const mandatoryTrainings = trainings.filter(t => t.mandatory);
-        const completedMandatory = mandatoryTrainings.filter(t =>
+        // Obrigatórios QUE SE APLICAM a este usuário — um treinamento de outro
+        // terminal não é pendência dele.
+        const mandatoryForUser = u
+          ? scopedTrainings.filter(t => t.mandatory && appliesToUser(t, u))
+          : [];
+        const completedMandatory = mandatoryForUser.filter(t =>
           items.some(i => i.trainingId === t.id && i.status !== 'expired')
         ).length;
-        // Find pending mandatory trainings for this user
-        const pendingTrainings = mandatoryTrainings.filter(t =>
+        const pendingTrainings = mandatoryForUser.filter(t =>
           !userTrainings.some(ut => ut.userId === userId && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired')
         );
         return {
           userId, user: u, items,
           hasExpired: items.some(i => i.status === 'expired'),
           hasSoon: items.some(i => i.status === 'soon'),
-          mandatoryTotal: mandatoryTrainings.length,
+          mandatoryTotal: mandatoryForUser.length,
           mandatoryCompleted: completedMandatory,
           pendingTrainings,
         };
@@ -230,15 +235,16 @@ export function TrainingsPage() {
         if (a.hasSoon !== b.hasSoon) return a.hasSoon ? -1 : 1;
         return (a.user?.name || '').localeCompare(b.user?.name || '');
       });
-  }, [filteredAssignments, users, trainings, userTrainings]);
+  }, [filteredAssignments, users, scopedTrainings, userTrainings]);
 
   // Also include users with NO assignments but with pending mandatory trainings
   const allUserGroups = useMemo(() => {
     const existingUserIds = new Set(userGroups.map(g => g.userId));
-    const mandatoryTrainings = trainings.filter(t => t.mandatory);
-    if (mandatoryTrainings.length === 0) return userGroups;
 
-    const additionalUsers = users
+    // Parte de `scopedUsers`: só usuários lotados nos terminais visíveis. Isso já
+    // exclui admin (sem terminal) e usuários de entidade (linkId aponta para a
+    // entidade). Quem não tem obrigatório aplicável não entra na lista.
+    const additionalUsers = scopedUsers
       .filter(u => !existingUserIds.has(u.id))
       .filter(u => {
         if (filterTerminal !== 'all' && u.linkId !== filterTerminal) return false;
@@ -246,21 +252,22 @@ export function TrainingsPage() {
         return true;
       })
       .map(u => {
-        const pendingTrainings = mandatoryTrainings.filter(t =>
+        const mandatoryForUser = scopedTrainings.filter(t => t.mandatory && appliesToUser(t, u));
+        const pendingTrainings = mandatoryForUser.filter(t =>
           !userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired')
         );
         if (pendingTrainings.length === 0) return null;
         return {
           userId: u.id, user: u, items: [] as typeof filteredAssignments,
           hasExpired: false, hasSoon: false,
-          mandatoryTotal: mandatoryTrainings.length, mandatoryCompleted: 0,
+          mandatoryTotal: mandatoryForUser.length, mandatoryCompleted: 0,
           pendingTrainings,
         };
       })
       .filter(Boolean) as typeof userGroups;
 
     return [...userGroups, ...additionalUsers];
-  }, [userGroups, users, trainings, userTrainings, filterTerminal, searchUser]);
+  }, [userGroups, scopedUsers, scopedTrainings, userTrainings, filterTerminal, searchUser]);
 
   useEffect(() => {
     if (showForm) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -515,6 +522,7 @@ export function TrainingsPage() {
         <div className="bg-card border border-success/20 rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Concluídos</p>
           <p className="text-xl font-mono font-bold text-success">{validCount}</p>
+          <p className="text-[10px] text-muted-foreground">somando todos os usuários</p>
         </div>
         <div className="bg-card border border-warning/20 rounded-xl p-3 text-center">
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-0.5">Atenção</p>

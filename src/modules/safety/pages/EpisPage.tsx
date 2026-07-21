@@ -222,7 +222,9 @@ export function EpisPage() {
     { name: 'Atenção', value: soonCount, fill: COLORS.soon },
   ].filter(d => d.value > 0);
 
-  const barData = terminals.map(t => {
+  // Só terminais visíveis: senão o gráfico exibe o nome de terminais que o
+  // usuário não pode ver (com as barras zeradas, mas o rótulo vaza).
+  const barData = terminals.filter(t => visibleTerminalIds.includes(t.id)).map(t => {
     const tUsers = users.filter(u => u.linkId === t.id).map(u => u.id);
     const tClassified = activeAssignments.filter(c => tUsers.includes(c.userId));
     return {
