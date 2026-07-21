@@ -1,12 +1,32 @@
 import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
-import { MessageSquare, Send, User, Shield, Ship } from 'lucide-react';
+import { MessageSquare, Send, User, Shield, Ship, Paperclip, Mic, X, Loader2, Trash2, FileText } from 'lucide-react';
 import { useOccurrenceChat, useChatMutations } from '@/api';
+import { filesApi, FileKind } from '@/api/files';
+import { ChatAttachmentBubble } from './chat/ChatAttachmentBubble';
+import { useAudioRecorder } from './chat/useAudioRecorder';
 
 interface Props {
   occurrenceId: string;
 }
+
+// Item 10: limites de tamanho no cliente (o back é a fonte da verdade; ver item 4 §5).
+const MAX_VIDEO = 50 * 1024 * 1024;
+const MAX_OTHER = 25 * 1024 * 1024;
+const ACCEPT = 'image/*,video/*,application/pdf,.doc,.docx,.ppt,.pptx';
+
+const kindOf = (mime: string): FileKind => {
+  if (mime.startsWith('image/')) return 'chat_image';
+  if (mime.startsWith('video/')) return 'chat_video';
+  if (mime.startsWith('audio/')) return 'chat_audio';
+  return 'chat_document';
+};
+
+const humanSize = (bytes: number) =>
+  bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 const roleIcon = (role: string) => {
   switch (role) {
@@ -41,7 +61,12 @@ export function OccurrenceChat({ occurrenceId }: Props) {
   const { data: messages = [] } = useOccurrenceChat(occurrenceId);
   const { send } = useChatMutations(occurrenceId);
   const [message, setMessage] = useState('');
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const rec = useAudioRecorder();
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -49,21 +74,90 @@ export function OccurrenceChat({ occurrenceId }: Props) {
     }
   }, [messages.length]);
 
+  // Object URL do preview: revoga ao trocar/limpar o anexo pendente.
+  useEffect(() => {
+    if (!pendingFile) {
+      setPreviewUrl(null);
+      return;
+    }
+    if (pendingFile.type.startsWith('image/') || pendingFile.type.startsWith('video/')) {
+      const url = URL.createObjectURL(pendingFile);
+      setPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setPreviewUrl(null);
+  }, [pendingFile]);
+
   if (!user) return null;
 
-  const sendMessage = () => {
+  const busy = uploading || send.isPending;
+
+  const clearPending = () => setPendingFile(null);
+
+  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite repicar o mesmo arquivo
+    if (!file) return;
+    const limit = file.type.startsWith('video/') ? MAX_VIDEO : MAX_OTHER;
+    if (file.size > limit) {
+      toast.error(`Arquivo muito grande (máx. ${humanSize(limit)}).`);
+      return;
+    }
+    setPendingFile(file);
+  };
+
+  const sendWithAttachment = async (file: File, caption: string) => {
+    setUploading(true);
+    try {
+      const up = await filesApi.upload(file, kindOf(file.type));
+      await send.mutateAsync({ message: caption || undefined, fileId: up.id });
+      setMessage('');
+      setPendingFile(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Falha ao enviar o anexo');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSend = () => {
+    if (busy) return;
+    if (pendingFile) {
+      sendWithAttachment(pendingFile, message.trim());
+      return;
+    }
     const text = message.trim();
-    if (!text || send.isPending) return;
-    send.mutate(text, {
-      onSuccess: () => setMessage(''),
-      onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao enviar mensagem'),
-    });
+    if (!text) return;
+    send.mutate(
+      { message: text },
+      {
+        onSuccess: () => setMessage(''),
+        onError: (err) => toast.error(err instanceof Error ? err.message : 'Falha ao enviar mensagem'),
+      },
+    );
+  };
+
+  const startRecording = async () => {
+    if (!rec.supported) {
+      toast.error('Gravação de áudio indisponível neste navegador. Anexe um arquivo de áudio.');
+      return;
+    }
+    try {
+      await rec.start();
+    } catch {
+      toast.error('Não foi possível acessar o microfone. Verifique a permissão.');
+    }
+  };
+
+  const stopAndSendRecording = async () => {
+    const file = await rec.stop();
+    if (file) await sendWithAttachment(file, '');
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSend();
     }
   };
 
@@ -72,6 +166,8 @@ export function OccurrenceChat({ occurrenceId }: Props) {
 
   const formatDate = (dt: string) =>
     new Date(dt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
+  const showSendButton = !!pendingFile || message.trim().length > 0;
 
   // Group messages by date
   let lastDate = '';
@@ -123,12 +219,15 @@ export function OccurrenceChat({ occurrenceId }: Props) {
                       <span className="text-[10px] font-medium text-muted-foreground">{msg.userName}</span>
                     </div>
                   )}
-                  <div className={`px-3 py-2 rounded-xl text-xs ${
+                  <div className={`rounded-xl text-xs overflow-hidden ${
                     isOwn
                       ? 'bg-primary text-primary-foreground rounded-br-sm'
                       : 'bg-secondary text-foreground rounded-bl-sm'
-                  }`}>
-                    <p className="whitespace-pre-wrap break-words">{msg.message}</p>
+                  } ${msg.attachment ? 'p-1' : 'px-3 py-2'}`}>
+                    {msg.attachment && <ChatAttachmentBubble attachment={msg.attachment} />}
+                    {msg.message && (
+                      <p className={`whitespace-pre-wrap break-words ${msg.attachment ? 'px-2 py-1' : ''}`}>{msg.message}</p>
+                    )}
                   </div>
                   <p className={`text-[9px] text-muted-foreground mt-0.5 px-1 ${isOwn ? 'text-right' : ''}`}>
                     {formatTime(msg.dateTime)}
@@ -142,23 +241,90 @@ export function OccurrenceChat({ occurrenceId }: Props) {
 
       {/* Input */}
       <div className="p-3 border-t border-border shrink-0">
-        <div className="flex items-end gap-2">
-          <textarea
-            value={message}
-            onChange={e => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Digite sua mensagem..."
-            rows={1}
-            className="flex-1 px-3 py-2 bg-background border border-input rounded-lg text-xs text-foreground placeholder:text-muted-foreground resize-none min-h-[36px] max-h-[80px] focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-          <button
-            onClick={sendMessage}
-            disabled={!message.trim()}
-            className="p-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 shrink-0"
-          >
-            <Send size={14} />
-          </button>
-        </div>
+        {rec.isRecording ? (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={rec.cancel}
+              className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors shrink-0"
+              title="Descartar"
+            >
+              <Trash2 size={16} />
+            </button>
+            <div className="flex-1 flex items-center gap-2 text-xs text-foreground">
+              <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
+              <span className="font-mono">Gravando… {mmss(rec.seconds)}</span>
+            </div>
+            <button
+              onClick={stopAndSendRecording}
+              disabled={busy}
+              className="p-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 shrink-0"
+              title="Enviar áudio"
+            >
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Preview do anexo pendente */}
+            {pendingFile && (
+              <div className="mb-2 flex items-center gap-2 p-2 bg-secondary rounded-lg">
+                {previewUrl && pendingFile.type.startsWith('image/') && (
+                  <img src={previewUrl} alt="" className="w-10 h-10 rounded object-cover shrink-0" />
+                )}
+                {previewUrl && pendingFile.type.startsWith('video/') && (
+                  <video src={previewUrl} className="w-10 h-10 rounded object-cover shrink-0 bg-black/40" />
+                )}
+                {!previewUrl && <FileText size={20} className="shrink-0 text-muted-foreground" />}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[11px] font-medium text-foreground">{pendingFile.name}</p>
+                  <p className="text-[9px] text-muted-foreground">{humanSize(pendingFile.size)}</p>
+                </div>
+                <button onClick={clearPending} className="p-1 text-muted-foreground hover:text-foreground shrink-0">
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-end gap-2">
+              <input ref={fileInputRef} type="file" accept={ACCEPT} onChange={onPickFile} className="hidden" />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={busy}
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors shrink-0 disabled:opacity-40"
+                title="Anexar imagem, vídeo ou documento"
+              >
+                <Paperclip size={16} />
+              </button>
+              <textarea
+                value={message}
+                onChange={e => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={pendingFile ? 'Adicione uma legenda…' : 'Digite sua mensagem…'}
+                rows={1}
+                className="flex-1 px-3 py-2 bg-background border border-input rounded-lg text-xs text-foreground placeholder:text-muted-foreground resize-none min-h-[36px] max-h-[80px] focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              {showSendButton ? (
+                <button
+                  onClick={handleSend}
+                  disabled={busy}
+                  className="p-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 shrink-0"
+                  title="Enviar"
+                >
+                  {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                </button>
+              ) : (
+                <button
+                  onClick={startRecording}
+                  disabled={busy}
+                  className="p-2 bg-secondary text-foreground rounded-lg hover:bg-secondary/70 transition-colors shrink-0 disabled:opacity-40"
+                  title="Gravar áudio"
+                >
+                  <Mic size={16} />
+                </button>
+              )}
+            </div>
+          </>
+        )}
         <p className="text-[9px] text-muted-foreground mt-1.5">
           Comunicação restrita aos participantes desta ocorrência · Enter para enviar
         </p>

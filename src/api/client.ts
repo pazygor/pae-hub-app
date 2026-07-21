@@ -80,8 +80,11 @@ async function tryRefresh(): Promise<boolean> {
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, auth = true, headers, _retry, ...rest } = options;
 
+  // Upload multipart: o browser define o Content-Type (com boundary); não stringifica.
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+
   const finalHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(headers as Record<string, string>),
   };
   if (auth) {
@@ -92,7 +95,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const res = await fetch(`${BASE_URL}${path}`, {
     ...rest,
     headers: finalHeaders,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : isFormData ? (body as FormData) : JSON.stringify(body),
   });
 
   // 401 → tenta renovar o token uma vez e repete a requisição.
@@ -129,3 +132,14 @@ export const http = {
 };
 
 export { BASE_URL };
+
+/**
+ * Resolve uma URL de arquivo devolvida pelo back. As URLs assinadas do driver local
+ * vêm relativas à base da API (`/files/:id?exp&sig`) — aqui viram absolutas para uso
+ * direto em `<img>`/`<a>`. URLs já absolutas (driver de nuvem) passam intactas.
+ */
+export function fileUrl(path?: string | null): string | undefined {
+  if (!path) return undefined;
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+}

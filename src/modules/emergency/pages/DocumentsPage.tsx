@@ -4,6 +4,8 @@ import { useAuth } from '@/lib/auth-context';
 import { DocumentType, PAEDocument } from '@/lib/types';
 import { Plus, FileText, Trash2, Filter, Download, Paperclip, X, Loader2 } from 'lucide-react';
 import { useDocuments, useDocumentMutations, useTerminals } from '@/api';
+import { fileUrl } from '@/api/client';
+import { FileUploadField } from '@/components/common/FileUploadField';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
@@ -39,7 +41,7 @@ export function DocumentsPage() {
   const [filterType, setFilterType] = useState<string>('all');
   const [filterTerminal, setFilterTerminal] = useState<string>('all');
   const [deleteTarget, setDeleteTarget] = useState<PAEDocument | null>(null);
-  const [form, setForm] = useState({ title: '', docType: 'Plano de Ação de Emergência' as DocumentType, description: '', fileName: '', terminalId: '' });
+  const [form, setForm] = useState({ title: '', docType: 'Plano de Ação de Emergência' as DocumentType, description: '', fileName: '', fileId: '', fileUrl: '', terminalId: '' });
 
   if (!user) return null;
 
@@ -59,7 +61,7 @@ export function DocumentsPage() {
 
   const handleAdd = () => {
     if (!form.title.trim()) { toast.error('Informe o título do documento'); return; }
-    if (!form.fileName.trim()) { toast.error('Informe o nome do arquivo'); return; }
+    if (!form.fileId) { toast.error('Envie o arquivo do documento'); return; }
     if (user.role === 'admin' && !form.terminalId) { toast.error('Selecione o terminal'); return; }
     create.mutate(
       {
@@ -67,11 +69,12 @@ export function DocumentsPage() {
         docType: form.docType,
         description: form.description || undefined,
         fileName: form.fileName,
+        fileId: form.fileId,
         terminalId: user.role === 'admin' ? form.terminalId : undefined,
       },
       {
         onSuccess: () => {
-          setForm({ title: '', docType: 'Plano de Ação de Emergência', description: '', fileName: '', terminalId: '' });
+          setForm({ title: '', docType: 'Plano de Ação de Emergência', description: '', fileName: '', fileId: '', fileUrl: '', terminalId: '' });
           setShowForm(false);
           toast.success('Documento cadastrado');
         },
@@ -164,8 +167,15 @@ export function DocumentsPage() {
             <textarea placeholder="Descrição" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className={`${inputCls} min-h-[50px]`} />
           </div>
           <div>
-            <label className={labelCls}>Nome do arquivo *</label>
-            <input placeholder="Ex.: plano-emergencia.pdf" value={form.fileName} onChange={e => setForm(f => ({ ...f, fileName: e.target.value }))} className={inputCls} />
+            <label className={labelCls}>Arquivo *</label>
+            <FileUploadField
+              value={form.fileId}
+              fileName={form.fileName}
+              currentUrl={form.fileUrl}
+              kind="document"
+              accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,image/*"
+              onChange={f => setForm(prev => ({ ...prev, fileId: f?.id ?? '', fileName: f?.name ?? '', fileUrl: '' }))}
+            />
           </div>
           <div className="flex gap-2">
             <button onClick={handleAdd} disabled={create.isPending} className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-md cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-1.5">
@@ -204,9 +214,15 @@ export function DocumentsPage() {
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
-              <button className="p-1.5 text-muted-foreground hover:text-primary transition-colors cursor-pointer" title="Download">
-                <Download size={14} />
-              </button>
+              {doc.fileUrl ? (
+                <a href={fileUrl(doc.fileUrl)} target="_blank" rel="noopener noreferrer" className="p-1.5 text-muted-foreground hover:text-primary transition-colors cursor-pointer" title="Baixar/abrir">
+                  <Download size={14} />
+                </a>
+              ) : (
+                <span className="p-1.5 text-muted-foreground/30" title="Sem arquivo (documento legado)">
+                  <Download size={14} />
+                </span>
+              )}
               {canUpload && (
                 <button onClick={() => setDeleteTarget(doc)} className="p-1.5 text-muted-foreground hover:text-emergency transition-colors cursor-pointer" title="Excluir">
                   <Trash2 size={14} />

@@ -80,6 +80,7 @@ export interface DocumentInput {
   docType: PAEDocument['docType'];
   description?: string;
   fileName: string;
+  fileId?: string;
   terminalId?: string;
 }
 

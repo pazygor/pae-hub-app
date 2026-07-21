@@ -13,6 +13,7 @@ export interface TrainingInput {
   description?: string;
   mandatory?: boolean;
   materialFileName?: string;
+  materialFileId?: string;
   videoUrl?: string;
   terminalIds?: string[];
 }

@@ -183,6 +183,8 @@ export interface PAEDocument {
   docType: DocumentType;
   description: string;
   fileName: string;
+  fileId?: string;   // FileAsset do arquivo real (item 4)
+  fileUrl?: string;  // URL assinada de download (vem do back)
   terminalId: string;
   uploadDate: string;
   userName: string;
@@ -206,14 +208,26 @@ export interface MapElement {
   state?: string;
 }
 
+// Item 10: anexo de mídia no chat (imagem/vídeo/áudio/documento). `url` é a URL
+// assinada relativa devolvida pelo back — resolver com fileUrl() antes de usar.
+export interface ChatAttachment {
+  id: string;
+  url: string;
+  mimeType: string;
+  originalName: string;
+  size: number;
+  kind: string;
+}
+
 export interface ChatMessage {
   id: string;
   occurrenceId: string;
   userId: string;
   userName: string;
   userRole: UserRole;
-  message: string;
+  message: string; // legenda (pode ser vazia quando há anexo)
   dateTime: string;
+  attachment?: ChatAttachment | null;
 }
 
 /* ── Treinamentos ── */
@@ -223,6 +237,8 @@ export interface Training {
   description: string;
   mandatory: boolean;
   materialFileName?: string;
+  materialFileId?: string;   // FileAsset do material (upload real — item 4)
+  materialUrl?: string;      // URL assinada de download (vem do back)
   videoUrl?: string;
   terminalIds?: string[]; // terminais a que se aplica; vazio = global (todos)
 }

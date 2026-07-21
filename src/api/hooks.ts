@@ -13,7 +13,7 @@ import { notificationRulesApi, NotificationRuleInput } from './notification-rule
 import { occurrencesApi, OccurrenceInput, TimelineEventInput } from './occurrences';
 import { dashboardApi } from './dashboard';
 import { entityNotificationsApi } from './entity-notifications';
-import { chatApi } from './chat';
+import { chatApi, SendChatInput } from './chat';
 import { risksApi, RiskInput, plansApi, PlanInput, mapElementsApi, MapElementInput, documentsApi, DocumentInput } from './pae-resources';
 import { trainingsApi, TrainingInput, AssignTrainingInput, episApi, EpiInput, DeliverEpiInput, complianceApi, ComplianceInput } from './safety';
 import { EPIUsageStatus } from '@/lib/types';
@@ -347,7 +347,7 @@ export function useChatMutations(occurrenceId: string | undefined) {
   const qc = useQueryClient();
   return {
     send: useMutation({
-      mutationFn: (message: string) => chatApi.send(occurrenceId!, message),
+      mutationFn: (input: SendChatInput) => chatApi.send(occurrenceId!, input),
       onSuccess: () => qc.invalidateQueries({ queryKey: ['chat', occurrenceId] }),
     }),
   };

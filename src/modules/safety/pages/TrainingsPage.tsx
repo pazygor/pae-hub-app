@@ -9,12 +9,14 @@ import { useTrainings, useTrainingAssignments, useTrainingMutations, useUsers, u
 import {
   GraduationCap, Plus, Trash2, CheckCircle, AlertTriangle, Clock, X, Users, UserPlus,
   Filter, Search, ChevronDown, ChevronUp, CalendarDays, Shield, FileText, Award,
-  Video, Upload, ExternalLink, Paperclip, CheckSquare2, Loader2, Pencil
+  Video, ExternalLink, Paperclip, CheckSquare2, Loader2, Pencil
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { PieTooltipContent } from '@/components/common/PieTooltip';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { AssignUsersModal } from '../components/AssignUsersModal';
+import { FileUploadField } from '@/components/common/FileUploadField';
+import { fileUrl } from '@/api/client';
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction,
@@ -81,7 +83,7 @@ export function TrainingsPage() {
   const [viewMode, setViewMode] = useState<'user' | 'training'>('training');
   // Seleção única de terminal (1:1 no front). O submit ainda envia terminalIds:[id]
   // — o back e o shape de dados seguem em lista, prontos para N terminais no futuro.
-  const [form, setForm] = useState({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalId: '' });
+  const [form, setForm] = useState({ name: '', description: '', mandatory: false, materialFileName: '', materialFileId: '', materialUrl: '', videoUrl: '', terminalId: '' });
   const [formError, setFormError] = useState('');
   const [batchAssign, setBatchAssign] = useState<string | null>(null);
   const [assignForm, setAssignForm] = useState({ userId: '', completedDate: '', expiryDate: '', certificate: '' });
@@ -309,17 +311,18 @@ export function TrainingsPage() {
   }, [batchAssign, trainings, users, terminals, visibleTerminalIds]);
 
   // Actions
+  const emptyForm = { name: '', description: '', mandatory: false, materialFileName: '', materialFileId: '', materialUrl: '', videoUrl: '', terminalId: defaultTerminalId };
   const closeForm = () => {
     setShowForm(false);
     setEditingId(null);
     setFormError('');
-    setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalId: defaultTerminalId });
+    setForm(emptyForm);
   };
 
   const startCreate = () => {
     setEditingId(null);
     setFormError('');
-    setForm({ name: '', description: '', mandatory: false, materialFileName: '', videoUrl: '', terminalId: defaultTerminalId });
+    setForm(emptyForm);
     setShowForm(true);
   };
 
@@ -331,6 +334,8 @@ export function TrainingsPage() {
       description: t.description ?? '',
       mandatory: t.mandatory,
       materialFileName: t.materialFileName ?? '',
+      materialFileId: t.materialFileId ?? '',
+      materialUrl: t.materialUrl ?? '',
       videoUrl: t.videoUrl ?? '',
       // registro legado pode ter N terminais; edição passa a ser 1:1 → pega o primeiro.
       terminalId: (t.terminalIds ?? [])[0] ?? '',
@@ -345,6 +350,7 @@ export function TrainingsPage() {
     const input = {
       name: form.name, description: form.description, mandatory: form.mandatory,
       materialFileName: form.materialFileName || undefined,
+      materialFileId: form.materialFileId || undefined,
       videoUrl: form.videoUrl || undefined,
       terminalIds: [form.terminalId],
     };
@@ -478,15 +484,21 @@ export function TrainingsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                <Paperclip size={10} className="inline mr-1" />Material <span className="text-muted-foreground/60 normal-case font-normal">(PDF, PPT)</span>
+                <Paperclip size={10} className="inline mr-1" />Material <span className="text-muted-foreground/60 normal-case font-normal">(PDF, PPT, DOC)</span>
               </label>
-              <div className="flex gap-2">
-                <input placeholder="Nome do arquivo (ex: manual.pdf)" value={form.materialFileName} onChange={e => setForm(f => ({ ...f, materialFileName: e.target.value }))}
-                  className="flex-1 h-10 px-3 py-2 bg-background border border-input rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ring-offset-background" />
-                <button type="button" className="h-10 px-3 bg-secondary text-secondary-foreground text-xs font-bold rounded-md hover:bg-secondary/80 flex items-center gap-1 cursor-pointer transition-colors">
-                  <Upload size={12} /> Upload
-                </button>
-              </div>
+              <FileUploadField
+                value={form.materialFileId}
+                fileName={form.materialFileName}
+                currentUrl={form.materialUrl}
+                kind="training_material"
+                accept=".pdf,.ppt,.pptx,.doc,.docx"
+                onChange={f => setForm(prev => ({
+                  ...prev,
+                  materialFileId: f?.id ?? '',
+                  materialFileName: f?.name ?? '',
+                  materialUrl: '', // URL assinada só existe após salvar/recarregar
+                }))}
+              />
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
@@ -704,11 +716,15 @@ export function TrainingsPage() {
                               {/* Material do treinamento */}
                               {(training.materialFileName || training.videoUrl) && (
                                 <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                  {training.materialFileName && (
-                                    <button className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors">
+                                  {training.materialFileName && (training.materialUrl ? (
+                                    <a href={fileUrl(training.materialUrl)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors">
+                                      <FileText size={10} /> {training.materialFileName} <ExternalLink size={8} />
+                                    </a>
+                                  ) : (
+                                    <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-muted text-muted-foreground rounded-lg">
                                       <FileText size={10} /> {training.materialFileName}
-                                    </button>
-                                  )}
+                                    </span>
+                                  ))}
                                   {training.videoUrl && (
                                     <a href={training.videoUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-accent text-accent-foreground rounded-lg hover:brightness-110 transition-colors">
                                       <Video size={10} /> Vídeo <ExternalLink size={8} />
@@ -827,11 +843,15 @@ export function TrainingsPage() {
                         <p className="text-[10px] text-muted-foreground mt-0.5">{training.description}</p>
                         {(training.materialFileName || training.videoUrl) && (
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            {training.materialFileName && (
-                              <button className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors">
+                            {training.materialFileName && (training.materialUrl ? (
+                              <a href={fileUrl(training.materialUrl)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors">
+                                <FileText size={10} /> {training.materialFileName} <ExternalLink size={8} />
+                              </a>
+                            ) : (
+                              <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-muted text-muted-foreground rounded-lg">
                                 <FileText size={10} /> {training.materialFileName}
-                              </button>
-                            )}
+                              </span>
+                            ))}
                             {training.videoUrl && (
                               <a href={training.videoUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[10px] px-2 py-0.5 bg-accent text-accent-foreground rounded-lg hover:brightness-110 transition-colors">
                                 <Video size={10} /> Assistir Vídeo <ExternalLink size={8} />
