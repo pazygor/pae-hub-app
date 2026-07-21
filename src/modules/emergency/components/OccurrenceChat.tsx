@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth-context';
-import { MessageSquare, Send, User, Shield, Ship, Paperclip, Mic, X, Loader2, Trash2, FileText } from 'lucide-react';
+import { MessageSquare, Send, User, Shield, Ship, Paperclip, Mic, X, Loader2, Trash2, FileText, Camera } from 'lucide-react';
 import { useOccurrenceChat, useChatMutations } from '@/api';
 import { filesApi, FileKind } from '@/api/files';
 import { ChatAttachmentBubble } from './chat/ChatAttachmentBubble';
@@ -66,6 +66,8 @@ export function OccurrenceChat({ occurrenceId }: Props) {
   const [uploading, setUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Câmera direta (só mobile): reusa o mesmo onPickFile/preview/upload do clipe.
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const rec = useAudioRecorder();
 
   useEffect(() => {
@@ -287,6 +289,9 @@ export function OccurrenceChat({ occurrenceId }: Props) {
 
             <div className="flex items-end gap-2">
               <input ref={fileInputRef} type="file" accept={ACCEPT} onChange={onPickFile} className="hidden" />
+              {/* `capture` abre a câmera direto no celular; ignorado no desktop.
+                  accept image+video → foto ou vídeo, como o WhatsApp. */}
+              <input ref={cameraInputRef} type="file" accept="image/*,video/*" capture="environment" onChange={onPickFile} className="hidden" />
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
@@ -294,6 +299,15 @@ export function OccurrenceChat({ occurrenceId }: Props) {
                 title="Anexar imagem, vídeo ou documento"
               >
                 <Paperclip size={16} />
+              </button>
+              {/* Câmera: só no mobile (md:hidden). No desktop o clipe já cobre tudo. */}
+              <button
+                onClick={() => cameraInputRef.current?.click()}
+                disabled={busy}
+                className="md:hidden p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors shrink-0 disabled:opacity-40"
+                title="Tirar foto ou gravar vídeo"
+              >
+                <Camera size={16} />
               </button>
               <textarea
                 value={message}

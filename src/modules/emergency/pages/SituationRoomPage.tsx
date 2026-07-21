@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import L from 'leaflet';
 import { useOccurrence, useOccurrenceMutations, useTerminals, useEntities, usePermissions, useRisks, usePlans, useDocuments, useMapElements } from '@/api';
+import { fileUrl } from '@/api/client';
 
 const EVENT_TYPES: TimelineEventType[] = [
   'ocorrência registrada', 'equipe acionada', 'plano de emergência ativado',
@@ -615,9 +616,16 @@ export function SituationRoomPage() {
                   <p className="text-xs font-bold text-foreground truncate">{doc.title}</p>
                   <p className="text-[10px] text-muted-foreground">{doc.docType} · {doc.fileName}</p>
                 </div>
-                <button className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors shrink-0 flex items-center gap-1">
-                  <FileText size={12} /> Abrir
-                </button>
+                {doc.fileUrl ? (
+                  <a href={fileUrl(doc.fileUrl)} target="_blank" rel="noopener noreferrer"
+                    className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors shrink-0 flex items-center gap-1">
+                    <FileText size={12} /> Abrir
+                  </a>
+                ) : (
+                  <span className="text-[10px] font-bold text-muted-foreground/40 shrink-0 flex items-center gap-1" title="Sem arquivo (documento legado)">
+                    <FileText size={12} /> Abrir
+                  </span>
+                )}
               </div>
             ))}
           </div>
