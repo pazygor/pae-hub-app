@@ -16,11 +16,17 @@ import {
 import L from 'leaflet';
 import { useOccurrence, useOccurrenceMutations, useTerminals, useEntities, usePermissions, useRisks, usePlans, useDocuments, useMapElements } from '@/api';
 import { fileUrl } from '@/api/client';
+import { useOccurrence, useOccurrenceMutations, useTerminals, useEntities, usePermissions, useRisks, usePlans, useDocuments, useMapElements, auditApi } from '@/api';
 
 const EVENT_TYPES: TimelineEventType[] = [
   'ocorrência registrada', 'equipe acionada', 'plano de emergência ativado',
   'entidade notificada', 'ação executada', 'atualização de status', 'ocorrência resolvida',
 ];
+
+// Dedupe de abertura da Sala (auditoria): última abertura registrada por ocorrência,
+// em nível de módulo — sobrevive a remontagens do componente. Janela curta.
+const recentSalaOpens = new Map<string, number>();
+const SALA_OPEN_DEDUPE_MS = 30_000;
 
 const eventIcon = (type: TimelineEventType) => {
   switch (type) {
@@ -110,6 +116,19 @@ export function SituationRoomPage() {
   const [timelineForm, setTimelineForm] = useState<{ type: TimelineEventType; description: string; attachment: string }>({
     type: 'ação executada', description: '', attachment: '',
   });
+
+  // Auditoria (item 2): registra a abertura da Sala de Situação. O dedupe fica no
+  // `recentSalaOpens` (nível de módulo, fora do componente) porque um guard por
+  // `useRef` não sobrevive a uma remontagem de instância — e sem StrictMode ainda
+  // pode haver remontagem (HMR, navegação). O back também deduplica por janela.
+  useEffect(() => {
+    if (!occurrenceId) return;
+    const now = Date.now();
+    const last = recentSalaOpens.get(occurrenceId) ?? 0;
+    if (now - last < SALA_OPEN_DEDUPE_MS) return;
+    recentSalaOpens.set(occurrenceId, now);
+    auditApi.logView({ action: 'open_situation_room', resource: 'occurrence', resourceId: occurrenceId }).catch(() => {});
+  }, [occurrenceId]);
 
   const terminal = occurrence ? terminals.find(t => t.id === occurrence.terminalId) : undefined;
   // Planos ATIVOS do terminal (Fase 10: o usuário escolhe qual ativar, não mais fixo).
