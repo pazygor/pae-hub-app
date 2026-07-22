@@ -33,14 +33,20 @@ const soonDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
 type TrainingStatus = 'valid' | 'soon' | 'expired' | 'pending';
 
-function getStatus(expiryDate: string): TrainingStatus {
+function getStatus(expiryDate: string | null): TrainingStatus {
+  if (!expiryDate) return 'pending'; // atribuído, ainda não concluído
   const d = new Date(expiryDate);
   if (d < now) return 'expired';
   if (d <= soonDate) return 'soon';
   return 'valid';
 }
+/** Tem conclusão válida (não pendente e não vencida)? */
+function hasValidCompletion(ut: { expiryDate: string | null }): boolean {
+  const s = getStatus(ut.expiryDate);
+  return s === 'valid' || s === 'soon';
+}
 
-function fmtDate(iso: string) { return new Date(iso).toLocaleDateString('pt-BR'); }
+function fmtDate(iso: string | null) { return iso ? new Date(iso).toLocaleDateString('pt-BR') : '—'; }
 function daysUntil(iso: string) { return Math.ceil((new Date(iso).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)); }
 
 function statusBadge(status: TrainingStatus) {
@@ -69,7 +75,7 @@ export function TrainingsPage() {
   const { data: users = [] } = useUsers();
   const { data: terminals = [] } = useTerminals();
   const { data: permissions = [] } = usePermissions();
-  const { create, update, remove: removeTrainingMut, assign, removeAssignment } = useTrainingMutations();
+  const { create, update, remove: removeTrainingMut, assign, complete, removeAssignment } = useTrainingMutations();
   const onError = (err: unknown) => toast.error(err instanceof Error ? err.message : 'Falha na operação');
   const [showForm, setShowForm] = useState(false);
   // null = cadastrando; id = editando o treinamento correspondente.
@@ -173,7 +179,7 @@ export function TrainingsPage() {
     // apenas os obrigatórios que se aplicam ao terminal dele.
     for (const u of scopedUsers) {
       for (const t of scopedTrainings.filter(t => t.mandatory && appliesToUser(t, u))) {
-        const has = userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired');
+        const has = userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && hasValidCompletion(ut));
         if (!has) count++;
       }
     }
@@ -223,7 +229,7 @@ export function TrainingsPage() {
           items.some(i => i.trainingId === t.id && i.status !== 'expired')
         ).length;
         const pendingTrainings = mandatoryForUser.filter(t =>
-          !userTrainings.some(ut => ut.userId === userId && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired')
+          !userTrainings.some(ut => ut.userId === userId && ut.trainingId === t.id && hasValidCompletion(ut))
         );
         return {
           userId, user: u, items,
@@ -258,7 +264,7 @@ export function TrainingsPage() {
       .map(u => {
         const mandatoryForUser = scopedTrainings.filter(t => t.mandatory && appliesToUser(t, u));
         const pendingTrainings = mandatoryForUser.filter(t =>
-          !userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && getStatus(ut.expiryDate) !== 'expired')
+          !userTrainings.some(ut => ut.userId === u.id && ut.trainingId === t.id && hasValidCompletion(ut))
         );
         if (pendingTrainings.length === 0) return null;
         return {
@@ -390,7 +396,8 @@ export function TrainingsPage() {
 
   const assignTraining = (trainingId: string) => {
     if (!assignForm.userId || !assignForm.completedDate || !assignForm.expiryDate) return;
-    assign.mutate(
+    // Form com datas = registrar CONCLUSÃO (não é atribuição pendente).
+    complete.mutate(
       {
         id: trainingId,
         input: {
@@ -413,9 +420,12 @@ export function TrainingsPage() {
     removeAssignment.mutate(id, { onError });
   };
 
-  // Quick completion: o back aplica hoje / +1 ano
+  // Quick completion: o back aplica hoje / +1 ano (atualiza o pendente/vencido).
   const quickComplete = (trainingId: string, userId: string) => {
-    assign.mutate({ id: trainingId, input: { userIds: [userId] } }, { onError });
+    complete.mutate({ id: trainingId, input: { userIds: [userId] } }, {
+      onSuccess: () => toast.success('Treinamento concluído'),
+      onError,
+    });
   };
 
   if (!user || (user.role !== 'admin' && user.role !== 'terminal')) return <p className="text-muted-foreground text-sm">Acesso restrito.</p>;
@@ -701,7 +711,7 @@ export function TrainingsPage() {
                     {items.map(ut => {
                       const training = ut.training;
                       if (!training) return null;
-                      const days = daysUntil(ut.expiryDate);
+                      const days = ut.expiryDate ? daysUntil(ut.expiryDate) : null;
 
                       return (
                         <div key={ut.id} className={`px-5 py-4 ${ut.status === 'expired' ? 'bg-primary/5' : ut.status === 'soon' ? 'bg-warning/5' : ''}`}>
@@ -733,49 +743,67 @@ export function TrainingsPage() {
                                 </div>
                               )}
 
-                              {/* Details */}
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                                  <CheckCircle size={11} className="shrink-0" />
-                                  <span>Realizado: <strong className="text-foreground">{fmtDate(ut.completedDate)}</strong></span>
+                              {ut.status === 'pending' ? (
+                                /* Atribuído, ainda não concluído */
+                                <div className="flex items-center gap-2 mb-1 text-[10px] text-muted-foreground">
+                                  <Clock size={11} className="shrink-0 text-warning" />
+                                  <span>Atribuído — aguardando conclusão do usuário.</span>
+                                  {userCanManage && (
+                                    <button onClick={() => quickComplete(training.id, ut.userId)}
+                                      className="ml-1 px-2 py-0.5 text-[10px] font-bold bg-success/10 text-success rounded-lg hover:bg-success/20 flex items-center gap-1">
+                                      <CheckCircle size={10} /> Marcar concluído
+                                    </button>
+                                  )}
                                 </div>
-                                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                                  <Clock size={11} className="shrink-0" />
-                                  <span>Vence: <strong className={ut.status === 'expired' ? 'text-primary' : ut.status === 'soon' ? 'text-warning' : 'text-foreground'}>{fmtDate(ut.expiryDate)}</strong></span>
-                                </div>
-                                <div className="flex items-center gap-1.5 text-[10px]">
-                                  <Shield size={11} className="shrink-0 text-muted-foreground" />
-                                  <span className={days < 0 ? 'text-primary font-bold' : days <= 30 ? 'text-warning font-bold' : 'text-muted-foreground'}>
-                                    {days < 0 ? `Vencido há ${Math.abs(days)} dias` : `${days} dias restantes`}
-                                  </span>
-                                </div>
-                                {ut.certificate && (
-                                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                                    <Award size={11} className="shrink-0" />
-                                    <span>Certificado: <strong className="text-foreground">{ut.certificate}</strong></span>
+                              ) : (
+                                <>
+                                  {/* Details */}
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                      <CheckCircle size={11} className="shrink-0" />
+                                      <span>Realizado: <strong className="text-foreground">{fmtDate(ut.completedDate)}</strong></span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                      <Clock size={11} className="shrink-0" />
+                                      <span>Vence: <strong className={ut.status === 'expired' ? 'text-primary' : ut.status === 'soon' ? 'text-warning' : 'text-foreground'}>{fmtDate(ut.expiryDate)}</strong></span>
+                                    </div>
+                                    {days !== null && (
+                                      <div className="flex items-center gap-1.5 text-[10px]">
+                                        <Shield size={11} className="shrink-0 text-muted-foreground" />
+                                        <span className={days < 0 ? 'text-primary font-bold' : days <= 30 ? 'text-warning font-bold' : 'text-muted-foreground'}>
+                                          {days < 0 ? `Vencido há ${Math.abs(days)} dias` : `${days} dias restantes`}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {ut.certificate && (
+                                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                        <Award size={11} className="shrink-0" />
+                                        <span>Certificado: <strong className="text-foreground">{ut.certificate}</strong></span>
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
 
-                              {/* Timeline */}
-                              <div className="border-l-2 border-border pl-3 ml-1 space-y-2">
-                                <div className="flex items-center gap-2 text-[10px]">
-                                  <div className="w-4 h-4 rounded-full flex items-center justify-center -ml-[21px] bg-card border border-border">
-                                    <CheckCircle size={9} className="text-success" />
+                                  {/* Timeline */}
+                                  <div className="border-l-2 border-border pl-3 ml-1 space-y-2">
+                                    <div className="flex items-center gap-2 text-[10px]">
+                                      <div className="w-4 h-4 rounded-full flex items-center justify-center -ml-[21px] bg-card border border-border">
+                                        <CheckCircle size={9} className="text-success" />
+                                      </div>
+                                      <span className="text-muted-foreground">{fmtDate(ut.completedDate)}</span>
+                                      <span className="text-foreground">Treinamento realizado</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px]">
+                                      <div className="w-4 h-4 rounded-full flex items-center justify-center -ml-[21px] bg-card border border-border">
+                                        <CalendarDays size={9} className={ut.status === 'expired' ? 'text-primary' : 'text-muted-foreground'} />
+                                      </div>
+                                      <span className="text-muted-foreground">{fmtDate(ut.expiryDate)}</span>
+                                      <span className={ut.status === 'expired' ? 'text-primary font-bold' : 'text-foreground'}>
+                                        {ut.status === 'expired' ? 'Treinamento venceu' : 'Vencimento previsto'}
+                                      </span>
+                                    </div>
                                   </div>
-                                  <span className="text-muted-foreground">{fmtDate(ut.completedDate)}</span>
-                                  <span className="text-foreground">Treinamento realizado</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-[10px]">
-                                  <div className="w-4 h-4 rounded-full flex items-center justify-center -ml-[21px] bg-card border border-border">
-                                    <CalendarDays size={9} className={ut.status === 'expired' ? 'text-primary' : 'text-muted-foreground'} />
-                                  </div>
-                                  <span className="text-muted-foreground">{fmtDate(ut.expiryDate)}</span>
-                                  <span className={ut.status === 'expired' ? 'text-primary font-bold' : 'text-foreground'}>
-                                    {ut.status === 'expired' ? 'Treinamento venceu' : 'Vencimento previsto'}
-                                  </span>
-                                </div>
-                              </div>
+                                </>
+                              )}
                             </div>
 
                             <button onClick={() => removeUserTraining(ut.id)} className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors shrink-0">
@@ -888,7 +916,7 @@ export function TrainingsPage() {
                     <div className="divide-y divide-border">
                       {assignments.map(ut => {
                         const u = ut.user;
-                        const days = daysUntil(ut.expiryDate);
+                        const days = ut.expiryDate ? daysUntil(ut.expiryDate) : null;
                         return (
                           <div key={ut.id} className={`px-5 py-3 flex items-center justify-between ${ut.status === 'expired' ? 'bg-primary/5' : ut.status === 'soon' ? 'bg-warning/5' : ''}`}>
                             <div className="flex items-center gap-3">
@@ -896,16 +924,30 @@ export function TrainingsPage() {
                               <div>
                                 <span className="text-xs font-medium text-foreground">{u?.name || ut.userId}</span>
                                 <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                                  <span className="text-[10px] text-muted-foreground flex items-center gap-1"><CheckCircle size={10} /> {fmtDate(ut.completedDate)}</span>
-                                  <span className="text-[10px] text-muted-foreground flex items-center gap-1"><Clock size={10} /> {fmtDate(ut.expiryDate)}</span>
-                                  <span className={`text-[10px] ${days < 0 ? 'text-primary font-bold' : days <= 30 ? 'text-warning font-bold' : 'text-muted-foreground'}`}>
-                                    {days < 0 ? `${Math.abs(days)}d atrás` : `${days}d restantes`}
-                                  </span>
-                                  {ut.certificate && <span className="text-[10px] text-muted-foreground flex items-center gap-1"><Award size={10} /> {ut.certificate}</span>}
+                                  {ut.status === 'pending' ? (
+                                    <span className="text-[10px] text-warning flex items-center gap-1"><Clock size={10} /> Aguardando conclusão</span>
+                                  ) : (
+                                    <>
+                                      <span className="text-[10px] text-muted-foreground flex items-center gap-1"><CheckCircle size={10} /> {fmtDate(ut.completedDate)}</span>
+                                      <span className="text-[10px] text-muted-foreground flex items-center gap-1"><Clock size={10} /> {fmtDate(ut.expiryDate)}</span>
+                                      {days !== null && (
+                                        <span className={`text-[10px] ${days < 0 ? 'text-primary font-bold' : days <= 30 ? 'text-warning font-bold' : 'text-muted-foreground'}`}>
+                                          {days < 0 ? `${Math.abs(days)}d atrás` : `${days}d restantes`}
+                                        </span>
+                                      )}
+                                      {ut.certificate && <span className="text-[10px] text-muted-foreground flex items-center gap-1"><Award size={10} /> {ut.certificate}</span>}
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
+                              {ut.status === 'pending' && userCanManage && (
+                                <button onClick={() => quickComplete(ut.trainingId, ut.userId)}
+                                  className="px-2 py-0.5 text-[10px] font-bold bg-success/10 text-success rounded-lg hover:bg-success/20 flex items-center gap-1">
+                                  <CheckCircle size={10} /> Concluir
+                                </button>
+                              )}
                               {statusBadge(ut.status)}
                               {userCanManage && <button onClick={() => removeUserTraining(ut.id)} className="p-1 text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={12} /></button>}
                             </div>

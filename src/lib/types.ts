@@ -247,8 +247,9 @@ export interface UserTraining {
   id: string;
   trainingId: string;
   userId: string;
-  completedDate: string;
-  expiryDate: string;
+  // null = atribuído/PENDENTE (ainda não concluído); preenchidos = CONCLUÍDO
+  completedDate: string | null;
+  expiryDate: string | null;
   certificate?: string;
 }
 

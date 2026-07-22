@@ -39,8 +39,11 @@ export const trainingsApi = {
   update: (id: string, input: Partial<TrainingInput>): Promise<Training> =>
     http.put<Training>(`/trainings/${id}`, input),
   remove: (id: string): Promise<unknown> => http.del(`/trainings/${id}`),
+  // Atribuir = criar pendência (sem datas). Concluir = registrar conclusão (datas).
   assign: async (id: string, input: AssignTrainingInput): Promise<UserTraining[]> =>
     (await http.post<any[]>(`/trainings/${id}/assignments`, input)).map(adaptUserTraining),
+  complete: async (id: string, input: AssignTrainingInput): Promise<UserTraining[]> =>
+    (await http.post<any[]>(`/trainings/${id}/complete`, input)).map(adaptUserTraining),
   removeAssignment: (assignmentId: string): Promise<unknown> =>
     http.del(`/trainings/assignments/${assignmentId}`),
 };

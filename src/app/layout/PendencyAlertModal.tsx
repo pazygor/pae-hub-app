@@ -26,12 +26,29 @@ export function PendencyAlertModal() {
   const now = new Date();
   const soonThreshold = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
   const { safetySubModules: activeSubs } = getUserActiveConfig(user);
-  const pendingTrainings = activeSubs.includes('trainings')
-    ? trainings.filter(t => t.mandatory && !userTrainings.some(ut => ut.userId === user.id && ut.trainingId === t.id && new Date(ut.expiryDate) >= now)).length
-    : 0;
-  const expiredTrainings = activeSubs.includes('trainings')
-    ? userTrainings.filter(ut => ut.userId === user.id && new Date(ut.expiryDate) < now).length
-    : 0;
+  // Pendências do PRÓPRIO usuário — só treinamentos EXPLICITAMENTE atribuídos a ele
+  // (mesma regra do Meu Painel). Um registro sem conclusão = atribuído/PENDENTE; com
+  // conclusão e vencido = VENCIDO. Não conta o catálogo inteiro (isso inflava admin/
+  // outros terminais).
+  const myTrainingRecords = userTrainings.filter(ut => ut.userId === user.id);
+  const myTrainingIds = [...new Set(myTrainingRecords.map(r => r.trainingId))];
+  let pendingTrainings = 0;
+  let expiredTrainings = 0;
+  if (activeSubs.includes('trainings')) {
+    for (const tid of myTrainingIds) {
+      // registro atual: pendente tem prioridade; senão o de maior validade
+      const rec = myTrainingRecords
+        .filter(r => r.trainingId === tid)
+        .sort((a, b) => {
+          if (!a.completedDate && b.completedDate) return -1;
+          if (a.completedDate && !b.completedDate) return 1;
+          return String(b.expiryDate ?? '').localeCompare(String(a.expiryDate ?? ''));
+        })[0];
+      if (!rec) continue;
+      if (!rec.completedDate) pendingTrainings++;
+      else if (rec.expiryDate && new Date(rec.expiryDate) < now) expiredTrainings++;
+    }
+  }
   const expiredEPIs = activeSubs.includes('epis')
     ? userEPIs.filter(ue => ue.userId === user.id && ue.usageStatus !== 'substituido' && ue.usageStatus !== 'devolvido' && ue.expiryDate && new Date(ue.expiryDate) < now).length
     : 0;

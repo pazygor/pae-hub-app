@@ -14,8 +14,8 @@ function fmtDate(iso: string) { return new Date(iso).toLocaleDateString('pt-BR')
 type TrainingStatus = 'concluido' | 'pendente' | 'vencido';
 
 function getTrainingStatus(ut: UserTraining | null, now: Date): TrainingStatus {
-  if (!ut) return 'pendente';
-  if (new Date(ut.expiryDate) < now) return 'vencido';
+  if (!ut || !ut.completedDate) return 'pendente'; // sem registro OU atribuído-não-concluído
+  if (ut.expiryDate && new Date(ut.expiryDate) < now) return 'vencido';
   return 'concluido';
 }
 
@@ -40,7 +40,7 @@ export function MyPanelPage() {
   const { data: userEPIs = [] } = useEpiDeliveries();
   const { data: complianceItems = [] } = useCompliance();
   const { data: terminals = [] } = useTerminals();
-  const { assign, removeAssignment } = useTrainingMutations();
+  const { complete } = useTrainingMutations();
   const { update: updateCompliance } = useComplianceMutations();
   const now = new Date();
   const [confirmedEPIs, setConfirmedEPIs] = useState<Set<string>>(new Set());
@@ -65,10 +65,14 @@ export function MyPanelPage() {
   const myTrainingIds = new Set(myTrainingRecords.map(r => r.trainingId));
   const myTrainings = trainings.filter(t => myTrainingIds.has(t.id));
   const trainingItems = myTrainings.map(t => {
-    // Registro mais recente do treinamento (refazer cria um novo registro)
+    // Registro atual: pendente (sem conclusão) tem prioridade; senão o de maior validade.
     const record = myTrainingRecords
       .filter(r => r.trainingId === t.id)
-      .sort((a, b) => String(b.expiryDate).localeCompare(String(a.expiryDate)))[0] ?? null;
+      .sort((a, b) => {
+        if (!a.completedDate && b.completedDate) return -1;
+        if (a.completedDate && !b.completedDate) return 1;
+        return String(b.expiryDate ?? '').localeCompare(String(a.expiryDate ?? ''));
+      })[0] ?? null;
     const status = getTrainingStatus(record, now);
     return { training: t, record, status };
   });
@@ -91,18 +95,11 @@ export function MyPanelPage() {
 
   // Actions
   const completeTraining = (trainingId: string) => {
-    // Registro vencido é removido e recriado com validade nova (hoje / +1 ano no back)
-    const existing = myTrainingRecords.find(r => r.trainingId === trainingId && new Date(r.expiryDate) < now);
-    const doAssign = () =>
-      assign.mutate({ id: trainingId, input: { userIds: [user.id] } }, {
-        onSuccess: () => toast.success('Treinamento concluído'),
-        onError,
-      });
-    if (existing) {
-      removeAssignment.mutate(existing.id, { onSuccess: doAssign, onError });
-    } else {
-      doAssign();
-    }
+    // Concluir: o back atualiza o registro pendente/vencido (ou cria) com hoje / +1 ano.
+    complete.mutate({ id: trainingId, input: { userIds: [user.id] } }, {
+      onSuccess: () => toast.success('Treinamento concluído'),
+      onError,
+    });
   };
 
   const confirmEPI = (userEpiId: string) => {
@@ -184,8 +181,9 @@ export function MyPanelPage() {
                     <p className="text-sm font-semibold text-foreground">{t.name}</p>
                     <div className="flex items-center gap-3 mt-0.5 text-[10px] text-muted-foreground">
                       {t.mandatory && <span className="text-warning font-bold">OBRIGATÓRIO</span>}
-                      {record && <span>Concluído: {fmtDate(record.completedDate)}</span>}
-                      {record && <span>Validade: {fmtDate(record.expiryDate)}</span>}
+                      {record?.completedDate && <span>Concluído: {fmtDate(record.completedDate)}</span>}
+                      {record?.expiryDate && <span>Validade: {fmtDate(record.expiryDate)}</span>}
+                      {record && !record.completedDate && <span className="text-warning">Atribuído — pendente</span>}
                     </div>
                   </div>
                   <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.color}`}>{cfg.label}</span>
