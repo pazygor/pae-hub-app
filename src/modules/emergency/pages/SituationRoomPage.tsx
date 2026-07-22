@@ -14,9 +14,8 @@ import {
   Navigation, ExternalLink, Flag, Loader2
 } from 'lucide-react';
 import L from 'leaflet';
-import { useOccurrence, useOccurrenceMutations, useTerminals, useEntities, usePermissions, useRisks, usePlans, useDocuments, useMapElements } from '@/api';
-import { fileUrl } from '@/api/client';
 import { useOccurrence, useOccurrenceMutations, useTerminals, useEntities, usePermissions, useRisks, usePlans, useDocuments, useMapElements, auditApi } from '@/api';
+import { fileUrl } from '@/api/client';
 
 const EVENT_TYPES: TimelineEventType[] = [
   'ocorrência registrada', 'equipe acionada', 'plano de emergência ativado',
