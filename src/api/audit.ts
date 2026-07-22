@@ -65,9 +65,11 @@ export interface ActivityFilters {
   limit?: number;
 }
 
-function qs(params: Record<string, string | number | undefined>): string {
+// `object` aceita as interfaces de filtro (que não têm index signature) e os
+// literais inline; o cast interno mantém a iteração type-safe.
+function qs(params: object): string {
   const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
+  for (const [k, v] of Object.entries(params as Record<string, unknown>)) {
     if (v !== undefined && v !== '') p.set(k, String(v));
   }
   const s = p.toString();
