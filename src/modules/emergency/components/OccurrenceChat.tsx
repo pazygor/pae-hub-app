@@ -11,10 +11,9 @@ interface Props {
   occurrenceId: string;
 }
 
-// Item 10: limites de tamanho no cliente (o back é a fonte da verdade; ver item 4 §5).
-const MAX_VIDEO = 50 * 1024 * 1024;
-const MAX_OTHER = 25 * 1024 * 1024;
-const ACCEPT = 'image/*,video/*,application/pdf,.doc,.docx,.ppt,.pptx';
+// Limite único de 50MB para qualquer tipo (o back é a fonte da verdade e só barra
+// executáveis). Sem `accept`: qualquer extensão pode ser anexada.
+const MAX_UPLOAD = 50 * 1024 * 1024;
 
 const kindOf = (mime: string): FileKind => {
   if (mime.startsWith('image/')) return 'chat_image';
@@ -100,9 +99,8 @@ export function OccurrenceChat({ occurrenceId }: Props) {
     const file = e.target.files?.[0];
     e.target.value = ''; // permite repicar o mesmo arquivo
     if (!file) return;
-    const limit = file.type.startsWith('video/') ? MAX_VIDEO : MAX_OTHER;
-    if (file.size > limit) {
-      toast.error(`Arquivo muito grande (máx. ${humanSize(limit)}).`);
+    if (file.size > MAX_UPLOAD) {
+      toast.error(`Arquivo muito grande (máx. ${humanSize(MAX_UPLOAD)}).`);
       return;
     }
     setPendingFile(file);
@@ -288,7 +286,7 @@ export function OccurrenceChat({ occurrenceId }: Props) {
             )}
 
             <div className="flex items-end gap-2">
-              <input ref={fileInputRef} type="file" accept={ACCEPT} onChange={onPickFile} className="hidden" />
+              <input ref={fileInputRef} type="file" onChange={onPickFile} className="hidden" />
               {/* `capture` abre a câmera direto no celular; ignorado no desktop.
                   accept image+video → foto ou vídeo, como o WhatsApp. */}
               <input ref={cameraInputRef} type="file" accept="image/*,video/*" capture="environment" onChange={onPickFile} className="hidden" />

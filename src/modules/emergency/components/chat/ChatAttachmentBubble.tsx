@@ -1,4 +1,5 @@
-import { FileText, Download } from 'lucide-react';
+import { useState } from 'react';
+import { FileText, Download, AlertCircle } from 'lucide-react';
 import { fileUrl } from '@/api/client';
 import { ChatAttachment } from '@/lib/types';
 
@@ -18,6 +19,23 @@ function humanSize(bytes: number): string {
 export function ChatAttachmentBubble({ attachment }: Props) {
   const src = fileUrl(attachment.url) ?? '';
   const mime = attachment.mimeType || '';
+  // Rede de segurança: se o navegador não decodificar o formato (ex.: áudio webm/opus
+  // gravado no Chrome, aberto no WebKit), troca o player por um download.
+  const [cantPlay, setCantPlay] = useState(false);
+
+  const unplayable = (label: string) => (
+    <a
+      href={src} target="_blank" rel="noreferrer" download={attachment.originalName}
+      className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-background/40 hover:bg-background/60 transition-colors max-w-[240px]"
+    >
+      <AlertCircle size={18} className="shrink-0 text-warning" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[11px] font-medium leading-tight">{label} não suportado neste navegador</p>
+        <p className="text-[9px] opacity-70">Toque para baixar · {humanSize(attachment.size)}</p>
+      </div>
+      <Download size={14} className="shrink-0 opacity-70" />
+    </a>
+  );
 
   if (mime.startsWith('image/')) {
     return (
@@ -33,18 +51,30 @@ export function ChatAttachmentBubble({ attachment }: Props) {
   }
 
   if (mime.startsWith('video/')) {
+    if (cantPlay) return unplayable('Vídeo');
     return (
       <video
         src={src}
         controls
+        playsInline
         preload="metadata"
+        onError={() => setCantPlay(true)}
         className="rounded-lg max-h-56 max-w-full bg-black/40"
       />
     );
   }
 
   if (mime.startsWith('audio/')) {
-    return <audio src={src} controls preload="metadata" className="w-56 max-w-full h-9" />;
+    if (cantPlay) return unplayable('Áudio');
+    return (
+      <audio
+        src={src}
+        controls
+        preload="metadata"
+        onError={() => setCantPlay(true)}
+        className="w-56 max-w-full h-9"
+      />
+    );
   }
 
   // Documento (pdf/doc/ppt/…): card com nome, tamanho e download.

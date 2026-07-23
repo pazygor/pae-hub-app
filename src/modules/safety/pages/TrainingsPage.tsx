@@ -501,7 +501,7 @@ export function TrainingsPage() {
                 fileName={form.materialFileName}
                 currentUrl={form.materialUrl}
                 kind="training_material"
-                accept=".pdf,.ppt,.pptx,.doc,.docx"
+                /* sem `accept`: qualquer extensão (o back só barra executáveis) */
                 onChange={f => setForm(prev => ({
                   ...prev,
                   materialFileId: f?.id ?? '',

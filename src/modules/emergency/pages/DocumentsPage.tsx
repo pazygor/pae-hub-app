@@ -173,7 +173,7 @@ export function DocumentsPage() {
               fileName={form.fileName}
               currentUrl={form.fileUrl}
               kind="document"
-              accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,image/*"
+              /* sem `accept`: qualquer extensão (o back só barra executáveis) */
               onChange={f => setForm(prev => ({ ...prev, fileId: f?.id ?? '', fileName: f?.name ?? '', fileUrl: '' }))}
             />
           </div>

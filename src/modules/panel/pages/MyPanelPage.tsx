@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { getDefaultSafetySubModules, SafetySubModule } from '@/lib/modules';
 import { UserTraining, ComplianceStatus } from '@/lib/types';
 import { useTrainings, useTrainingAssignments, useTrainingMutations, useEpis, useEpiDeliveries, useCompliance, useComplianceMutations, useTerminals } from '@/api';
+import { fileUrl } from '@/api/client';
 import {
   User, GraduationCap, HardHat, ClipboardCheck, CheckCircle2, AlertTriangle,
   XCircle, Clock, ExternalLink, FileText, Play, Check, Shield, AlertCircle
@@ -188,14 +189,31 @@ export function MyPanelPage() {
                   </div>
                   <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.color}`}>{cfg.label}</span>
                   <div className="flex gap-1 shrink-0">
-                    {(t.materialFileName || t.videoUrl) && (
-                      <button
-                        onClick={() => t.videoUrl ? window.open(t.videoUrl, '_blank') : null}
+                    {/* Material e vídeo são independentes: quem vai fazer o treinamento
+                        precisa enxergar o PDF mesmo quando também há vídeo. */}
+                    {t.materialFileName && (t.materialUrl ? (
+                      <a
+                        href={fileUrl(t.materialUrl)} target="_blank" rel="noopener noreferrer"
+                        title={t.materialFileName}
                         className="px-2.5 py-1.5 text-[10px] font-bold bg-secondary text-foreground rounded-lg hover:bg-secondary/80 flex items-center gap-1"
                       >
-                        {t.videoUrl ? <Play size={10} /> : <FileText size={10} />}
-                        Ver material
-                      </button>
+                        <FileText size={10} /> Material <ExternalLink size={8} />
+                      </a>
+                    ) : (
+                      <span
+                        title="Material sem arquivo (cadastro antigo)"
+                        className="px-2.5 py-1.5 text-[10px] font-bold bg-muted text-muted-foreground/60 rounded-lg flex items-center gap-1"
+                      >
+                        <FileText size={10} /> Material
+                      </span>
+                    ))}
+                    {t.videoUrl && (
+                      <a
+                        href={t.videoUrl} target="_blank" rel="noopener noreferrer"
+                        className="px-2.5 py-1.5 text-[10px] font-bold bg-accent text-accent-foreground rounded-lg hover:brightness-110 flex items-center gap-1"
+                      >
+                        <Play size={10} /> Vídeo <ExternalLink size={8} />
+                      </a>
                     )}
                     {status !== 'concluido' && (
                       <button

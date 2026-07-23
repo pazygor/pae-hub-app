@@ -18,6 +18,17 @@ export function useAudioRecorder() {
     !!navigator.mediaDevices?.getUserMedia &&
     typeof MediaRecorder !== 'undefined';
 
+  // Prefere mp4/AAC: é o único formato que toca em WebKit (Safari e todo navegador no
+  // iOS) E em Blink (Chrome/Edge/Android). Só cai para webm/opus quando não há mp4 —
+  // nesse caso o WebKit não reproduz inline e a bolha oferece download.
+  const pickRecorderOptions = (): MediaRecorderOptions | undefined => {
+    if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return undefined;
+    for (const mimeType of ['audio/mp4', 'audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/webm']) {
+      if (MediaRecorder.isTypeSupported(mimeType)) return { mimeType };
+    }
+    return undefined; // deixa o navegador escolher
+  };
+
   const stopTimer = () => {
     if (timerRef.current !== null) {
       clearInterval(timerRef.current);
@@ -33,7 +44,7 @@ export function useAudioRecorder() {
   const start = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     streamRef.current = stream;
-    const recorder = new MediaRecorder(stream);
+    const recorder = new MediaRecorder(stream, pickRecorderOptions());
     chunksRef.current = [];
 
     recorder.ondataavailable = (e) => {
