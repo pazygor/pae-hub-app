@@ -12,6 +12,7 @@ import { MobileShell } from './MobileShell';
 import { NotificationBell } from './NotificationBell';
 import { OccurrenceAlertModal } from './OccurrenceAlertModal';
 import { PendencyAlertModal } from './PendencyAlertModal';
+import { ConsentTermsModal } from './ConsentTermsModal';
 import { useEmergencyDispatch } from './EmergencyDispatchProvider';
 import { useViewMode } from './ViewModeProvider';
 import { headerLabelForPath, pathForView, situationRoomPath } from '@/lib/nav-config';
@@ -64,6 +65,8 @@ export function AppShell() {
 
   return (
     <div className="flex h-svh bg-background overflow-hidden">
+      {/* Termo de Consentimento (item 6): bloqueia tudo no 1º acesso, antes de qualquer alerta. */}
+      <ConsentTermsModal />
       <PendencyAlertModal />
       <OccurrenceAlertModal />
 

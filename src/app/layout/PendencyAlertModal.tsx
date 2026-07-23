@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle as AlertTriangleIcon, X, GraduationCap, HardHat, ClipboardCheck } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { getUserActiveConfig } from '@/lib/access-control';
+import { needsTermsAcceptance } from '@/lib/terms';
 import { useTrainings, useTrainingAssignments, useEpiDeliveries, useCompliance } from '@/api';
 
 /**
@@ -21,6 +22,8 @@ export function PendencyAlertModal() {
   const [alertDismissed, setAlertDismissed] = useState(false);
 
   if (!user) return null;
+  // O Termo de Consentimento (item 6) tem prioridade: nada de pendências antes do aceite.
+  if (needsTermsAcceptance(user)) return null;
 
   // === Pendency calculation (dados reais da API — Fase 5b) ===
   const now = new Date();

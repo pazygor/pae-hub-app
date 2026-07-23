@@ -7,8 +7,10 @@ import { useTrainings, useTrainingAssignments, useTrainingMutations, useEpis, us
 import { fileUrl } from '@/api/client';
 import {
   User, GraduationCap, HardHat, ClipboardCheck, CheckCircle2, AlertTriangle,
-  XCircle, Clock, ExternalLink, FileText, Play, Check, Shield, AlertCircle
+  XCircle, Clock, ExternalLink, FileText, Play, Check, Shield, AlertCircle, KeyRound, Loader2
 } from 'lucide-react';
+import { authApi } from '@/api/auth';
+import { PasswordInput } from '@/components/common/PasswordInput';
 
 function fmtDate(iso: string) { return new Date(iso).toLocaleDateString('pt-BR'); }
 
@@ -112,6 +114,27 @@ export function MyPanelPage() {
   };
 
   const totalAlerts = pendingTrainings + expiredTrainings + expiredEPIs;
+
+  // Segurança da conta: trocar a própria senha (item 1). O back devolve tokens
+  // novos, então o usuário continua logado após trocar.
+  const [pwd, setPwd] = useState({ current: '', next: '', confirm: '' });
+  const [pwdBusy, setPwdBusy] = useState(false);
+  const changePassword = async () => {
+    if (!pwd.current || !pwd.next) { toast.error('Preencha a senha atual e a nova.'); return; }
+    if (pwd.next.length < 8) { toast.error('A nova senha deve ter no mínimo 8 caracteres.'); return; }
+    if (pwd.next !== pwd.confirm) { toast.error('A confirmação não confere com a nova senha.'); return; }
+    if (pwd.next === pwd.current) { toast.error('A nova senha deve ser diferente da atual.'); return; }
+    setPwdBusy(true);
+    try {
+      await authApi.changePassword(pwd.current, pwd.next);
+      setPwd({ current: '', next: '', confirm: '' });
+      toast.success('Senha alterada com sucesso.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível alterar a senha.');
+    } finally {
+      setPwdBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -322,6 +345,38 @@ export function MyPanelPage() {
           </div>
         </div>
       )}
+
+      {/* Segurança da conta — trocar a própria senha (todos os perfis) */}
+      <div className="bg-card border rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b flex items-center gap-2">
+          <KeyRound size={16} className="text-primary" />
+          <h3 className="text-sm font-bold text-foreground">Segurança da conta</h3>
+        </div>
+        <div className="p-5 space-y-3 max-w-md">
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Senha atual</label>
+            <PasswordInput value={pwd.current} onChange={e => setPwd(p => ({ ...p, current: e.target.value }))} placeholder="••••••••" className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Nova senha</label>
+              <PasswordInput value={pwd.next} onChange={e => setPwd(p => ({ ...p, next: e.target.value }))} placeholder="mín. 8 caracteres" className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Confirmar nova senha</label>
+              <PasswordInput value={pwd.confirm} onChange={e => setPwd(p => ({ ...p, confirm: e.target.value }))} placeholder="repita a nova senha" className="w-full px-3 py-2 rounded-md border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
+            </div>
+          </div>
+          <p className="text-[10px] text-muted-foreground">Ao alterar, suas outras sessões (outros dispositivos) são encerradas. Esta continua ativa.</p>
+          <button
+            onClick={changePassword}
+            disabled={pwdBusy}
+            className="px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg disabled:opacity-60 flex items-center gap-1.5 hover:opacity-90 transition-opacity"
+          >
+            {pwdBusy && <Loader2 size={12} className="animate-spin" />} Alterar senha
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

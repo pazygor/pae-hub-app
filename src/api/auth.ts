@@ -21,6 +21,8 @@ export interface ApiAuthUser {
   organizationName?: string;
   avatarUrl: string | null;
   alertsSeenAt?: string | null;
+  termsAcceptedAt?: string | null;
+  termsVersion?: string | null;
   allowedModules?: string[];
   allowedTerminals?: string[];
   allowedOccurrenceTypes?: string[];
@@ -48,6 +50,22 @@ export const authApi = {
 
   /** Marca os alertas de ocorrência como vistos — o próximo login só re-alerta o que vier depois. */
   markAlertsSeen: () => http.post<{ alertsSeenAt: string }>('/auth/alerts-seen', {}),
+
+  /**
+   * Altera a própria senha. O back revoga as outras sessões e devolve tokens novos
+   * para a atual — persistimos aqui para o usuário NÃO ser deslogado.
+   */
+  changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
+    const res = await http.post<{ message: string; accessToken: string; refreshToken: string }>(
+      '/auth/change-password',
+      { currentPassword, newPassword },
+    );
+    if (res.accessToken && res.refreshToken) tokenStore.set(res.accessToken, res.refreshToken);
+  },
+
+  /** Registra o aceite do Termo de Consentimento (item 6). */
+  acceptTerms: (version: string) =>
+    http.post<{ termsAcceptedAt: string; termsVersion: string }>('/auth/accept-terms', { version }),
 
   /** Revoga o refresh token no back e limpa os tokens locais. */
   logout: async (): Promise<void> => {

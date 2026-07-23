@@ -72,6 +72,9 @@ export interface AppUser {
   phone?: string;
   /** Último "visto" dos alertas de ocorrência (re-hidratação no login). */
   alertsSeenAt?: string | null;
+  /** Termo de Consentimento (item 6): quando aceitou e qual versão. */
+  termsAcceptedAt?: string | null;
+  termsVersion?: string | null;
   allowedModules?: string[];
   allowedTerminals?: string[];
   allowedOccurrenceTypes?: string[];

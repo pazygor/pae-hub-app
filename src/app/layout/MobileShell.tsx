@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth-context';
 import { headerLabelForPath } from '@/lib/nav-config';
 import { PageLoader } from '@/components/common/PageLoader';
 import { useActiveEmergencies } from '@/api';
+import { ConsentTermsModal } from './ConsentTermsModal';
 
 /**
  * Chrome mobile (Fase 1.D): envolve as telas abertas a partir do painel de
@@ -23,6 +24,8 @@ export function MobileShell() {
 
   return (
     <div className="flex flex-col h-svh bg-background">
+      {/* Termo de Consentimento (item 6): bloqueante também no mobile. */}
+      <ConsentTermsModal />
       {/* Banner de emergência ativa (mesma linguagem do painel) */}
       {activeEmergencies.length > 0 && (
         <div className="bg-primary text-primary-foreground px-4 py-2 flex items-center justify-center gap-2 shrink-0 animate-pulse">

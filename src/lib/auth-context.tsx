@@ -19,6 +19,8 @@ interface AuthContextType {
   setData: React.Dispatch<React.SetStateAction<AppData>>;
   /** Autentica na API. Lança ApiError em falha (401 = credenciais inválidas). */
   login: (email: string, password: string) => Promise<void>;
+  /** Reidrata o usuário via /auth/me (ex.: após aceitar o Termo). */
+  refreshUser: () => Promise<void>;
   logout: () => void;
 }
 
@@ -59,6 +61,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(adaptAuthUser(apiUser));
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const apiUser = await authApi.me();
+    setUser(adaptAuthUser(apiUser));
+  }, []);
+
   const logout = useCallback(() => {
     // Revoga o refresh token no back sem bloquear a UI.
     authApi.logout().catch(() => {});
@@ -66,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, data, setData, login, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, data, setData, login, refreshUser, logout }}>
       {children}
     </AuthContext.Provider>
   );
